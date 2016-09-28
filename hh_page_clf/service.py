@@ -1,9 +1,13 @@
 import argparse
+import base64
 import logging
 import json
+import pickle
 from typing import Dict
 
 from kafka import KafkaConsumer, KafkaProducer
+
+from .train import train_model
 
 
 class Service:
@@ -28,29 +32,46 @@ class Service:
                 logging.info('Got message to stop (from tests)')
                 break
             self.handle_message(message.value)
+            self.consumer.commit()
 
     def handle_message(self, message: Dict) -> None:
-        print(message)
         logging.info('Got training task with {} pages'.format(
             len(message.get('pages', []))))
+        result = train_model(message['pages'])
         self.send_result({
             'id': message['id'],
-            'quality': 'Accuracy is 0.84 and some other metric is 0.89',
-            'model': 'b64-encoded blob',
+            'quality': result.meta,
+            'model': encode_model(result.model),
         })
 
     def send_result(self, result: Dict) -> None:
-        logging.info('Sending result for id {}'.format(result.get('id')))
+        logging.info('Sending result for id "{}"'.format(result.get('id')))
         self.producer.send(self.output_topic, result)
         self.producer.flush()
 
 
 def encode_message(message: Dict) -> bytes:
-    return json.dumps(message).encode('utf8')
+    try:
+        return json.dumps(message).encode('utf8')
+    except Exception as e:
+        logging.error('Error serializing message', exc_info=e)
+        raise
 
 
 def decode_message(message: bytes) -> Dict:
-    return json.loads(message.decode('utf8'))
+    try:
+        return json.loads(message.decode('utf8'))
+    except Exception as e:
+        logging.error('Error deserializing message', exc_info=e)
+        raise
+
+
+def encode_model(model: object) -> str:
+    return base64.b64encode(pickle.dumps(model, protocol=2)).decode('ascii')
+
+
+def decode_model(data: str) -> object:
+    return pickle.loads(base64.b64decode(data))
 
 
 def main():
