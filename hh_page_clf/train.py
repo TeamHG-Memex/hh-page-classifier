@@ -7,7 +7,7 @@ from typing import List, Dict
 from eli5.sklearn.explain_weights import explain_weights
 import html_text
 import numpy as np
-from sklearn.cross_validation import LabelKFold
+from sklearn.cross_validation import LabelKFold, KFold
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.pipeline import Pipeline
@@ -24,32 +24,64 @@ def train_model(docs: List[Dict]) -> ModelMeta:
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
+    if not docs:
+        return ModelMeta(
+            model=None, meta='Can not train a model: no pages given.')
     with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    logging.info('Extracting text')
-    all_xs = [html_text.extract_text(doc['html']) for doc in with_labels]
+    if not with_labels:
+        return ModelMeta(
+            model=None, meta='Can not train a model: no labeled pages given.')
+
     all_ys = np.array([doc['relevant'] for doc in with_labels])
     classes = np.unique(all_ys)
-    if len(classes) < 2:
+    if len(classes) == 1:
         only_cls = classes[0]
         class_names = ['not relevant', 'relevant']
         return ModelMeta(
             model=None,
-            meta='Only {} pages in sample: need examples of {} pages too.'.format(
-                class_names[only_cls], class_names[not only_cls]))
+            meta='Can not train a model. Only {} pages in sample: '
+                 'need examples of {} pages too.'.format(
+                    class_names[only_cls], class_names[not only_cls]))
+
+    logging.info('Extracting text')
+    all_xs = [html_text.extract_text(doc['html']) for doc in with_labels]
+
     logging.info('Evaluating model')
     metrics = defaultdict(list)
-    with multiprocessing.Pool() as pool:
-        for _metrics in pool.imap_unordered(
-                partial(eval_on_fold, all_xs=all_xs, all_ys=all_ys),
-                ((train_idx, test_idx) for train_idx, test_idx in LabelKFold(
-                    [get_domain(doc['url']) for doc in with_labels], n_folds=4)
-                 if len(np.unique(all_ys[train_idx])) == 2)):
-            for k, v in _metrics.items():
-                metrics[k].append(v)
+    domains = [get_domain(doc['url']) for doc in with_labels]
+    n_domains = len(set(domains))
+    n_folds = 4
+    descr = []
+    if n_domains == 1:
+        descr += [
+            'Warning: only 1 domain in data means that it\'s impossible to do '
+            'cross-validation across domains, '
+            'and might result in model over-fitting.']
+        folds = KFold(len(all_xs), n_folds=n_folds)
+    else:
+        folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
+        if n_domains < n_folds:
+            descr += [
+                'Warning: low number of domains (just {}) '
+                'might result in model over-fitting.'.format(n_domains)]
+    folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
+    if not folds:
+        descr += [
+            'Warning: Can not do cross-validation, as there are no folds where '
+            'training data has both relevant and non-relevant examples. '
+            'There are too few domains or the dataset is too unbalanced.']
+    else:
+        with multiprocessing.Pool() as pool:
+            for _metrics in pool.imap_unordered(
+                    partial(eval_on_fold, all_xs=all_xs, all_ys=all_ys), folds):
+                for k, v in _metrics.items():
+                    metrics[k].append(v)
+
     logging.info('Training final model')
     clf = init_clf()
     clf.fit(all_xs, all_ys)
-    return ModelMeta(model=clf, meta=describe_model(clf, metrics, docs))
+    descr.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
+    return ModelMeta(model=clf, meta='\n'.join(descr))
 
 
 def init_clf() -> Pipeline:
@@ -86,30 +118,38 @@ def flt_list(lst: List, indices: np.ndarray) -> List:
     return [x for i, x in enumerate(lst) if i in indices]
 
 
-def describe_model(clf: Pipeline, metrics: Dict, docs: List[Dict]) -> str:
+def describe_model(
+        clf: Pipeline, metrics: Dict,
+        docs: List[Dict], with_labels: List[Dict], n_domains: int) -> List[str]:
     """ Return a human-readable model description.
     """
     descr = []
-    descr += ['Metrics:']
-    aggr_metrics = {
-        k: '  {:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v))
-        for k, v in metrics.items()}
-    descr += ['{:<20}: {}'.format(k, v) for k, v in sorted(aggr_metrics.items())]
-    with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    descr += ['Dataset: {n_docs} documents, {labeled_ratio:.0%} with labels'
-              .format(n_docs=len(docs),
-                      labeled_ratio=len(with_labels) / len(docs))]
+    descr += [
+        'Dataset: {n_docs} documents, {labeled_ratio:.0%} with labels '
+        'across {n_domains} domain{s}.'.format(
+            n_docs=len(docs),
+            labeled_ratio=len(with_labels) / len(docs),
+            n_domains=n_domains,
+            s='s' if n_domains > 1 else '',
+        )]
     relevant = [doc for doc in docs if doc['relevant']]
     relevant_ratio = len(relevant) / len(with_labels)
-    descr += ['Class balance: {:.0%} relevant, {:.0%} not relevant'
-              .format(relevant_ratio, 1. - relevant_ratio)]
+    descr += ['Class balance: {:.0%} relevant, {:.0%} not relevant.'
+                  .format(relevant_ratio, 1. - relevant_ratio)]
+    if metrics:
+        descr += ['Metrics:']
+        aggr_metrics = {
+            k: '  {:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v))
+            for k, v in metrics.items()}
+        descr += ['{:<20}: {}'.format(k, v)
+                  for k, v in sorted(aggr_metrics.items())]
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vect'], top=10)
     feature_weights = weights_explanation['classes'][0]['feature_weights']
     descr.extend(features_descr(feature_weights, 'pos', 'Positive'))
     descr.extend(features_descr(feature_weights, 'neg', 'Negative'))
     # TODO - some advice: are metrics good or bad, how is the class balance
-    return '\n'.join(descr)
+    return descr
 
 
 def features_descr(feature_weights, key, key_name):

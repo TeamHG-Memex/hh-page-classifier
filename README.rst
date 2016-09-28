@@ -59,5 +59,7 @@ Start kafka with zookeper::
 
 Run tests::
 
-    py.test --doctest-modules --cov=hh_page_clf tests hh_page_clf
+    py.test --doctest-modules \
+        --cov=hh_page_clf --cov-report=term --cov-report=html \
+        tests hh_page_clf
 

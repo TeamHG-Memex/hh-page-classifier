@@ -60,20 +60,22 @@ def test_training():
 
         assert train_response == {
             'id': 'some id',
-             'quality': 'Metrics:\n'
-                        'Accuracy            :   1.000 ± 0.000\n'
-                        'F1                  :   0.750 ± 0.849\n'
-                        'ROC AUC             :   nan ± nan\n'
-                        'Dataset: 10 documents, 100% with labels\n'
-                        'Class balance: 30% relevant, 70% not relevant\n'
-                        'Positive features:\n'
-                        'number1             : 2.16\n'
-                        'Negative features:\n'
-                        'number0             : -1.14\n'
-                        'number2             : -0.97\n'
-                        '<BIAS>              : -0.96\n'
-                        'hi                  : -0.05\n'
-                        'example             : -0.05'}
+            'quality':
+                'Dataset: 10 documents, 100% with labels across 10 domains.\n'
+                'Class balance: 30% relevant, 70% not relevant.\n'
+                'Metrics:\n'
+                'Accuracy            :   1.000 ± 0.000\n'
+                'F1                  :   0.750 ± 0.849\n'
+                'ROC AUC             :   nan ± nan\n'
+                'Positive features:\n'
+                'number1             : 2.16\n'
+                'Negative features:\n'
+                'number0             : -1.14\n'
+                'number2             : -0.97\n'
+                '<BIAS>              : -0.96\n'
+                'hi                  : -0.05\n'
+                'example             : -0.05',
+        }
 
         page_neg, page_pos = train_request['pages'][:2]
         pred_proba = lambda page: \
