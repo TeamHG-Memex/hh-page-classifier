@@ -38,14 +38,16 @@ class Service:
         logging.info('Got training task with {} pages'.format(
             len(message.get('pages', []))))
         result = train_model(message['pages'])
+        serialized_model = encode_model(result.model)
+        logging.info('Sending result for id "{}", model size {} bytes'
+                     .format(message.get('id'), len(serialized_model)))
         self.send_result({
             'id': message['id'],
             'quality': result.meta,
-            'model': encode_model(result.model),
+            'model': serialized_model,
         })
 
     def send_result(self, result: Dict) -> None:
-        logging.info('Sending result for id "{}"'.format(result.get('id')))
         self.producer.send(self.output_topic, result)
         self.producer.flush()
 
