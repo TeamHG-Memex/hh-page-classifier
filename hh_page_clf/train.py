@@ -1,5 +1,7 @@
 from collections import defaultdict, namedtuple
+from functools import partial
 import logging
+import multiprocessing
 from typing import List, Dict
 
 from eli5.sklearn.explain_weights import explain_weights
@@ -23,6 +25,7 @@ def train_model(docs: List[Dict]) -> ModelMeta:
     Return the model itself and a human-readable description of it's performance.
     """
     with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    logging.info('Extracting text')
     all_xs = [html_text.extract_text(doc['html']) for doc in with_labels]
     all_ys = np.array([doc['relevant'] for doc in with_labels])
     classes = np.unique(all_ys)
@@ -35,10 +38,13 @@ def train_model(docs: List[Dict]) -> ModelMeta:
                 class_names[only_cls], class_names[not only_cls]))
     logging.info('Evaluating model')
     metrics = defaultdict(list)
-    for train_idx, test_idx in LabelKFold(
-            [get_domain(doc['url']) for doc in with_labels], n_folds=4):
-        if len(np.unique(all_ys[train_idx])) == 2:
-            for k, v in eval_on_fold(all_xs, all_ys, train_idx, test_idx).items():
+    with multiprocessing.Pool() as pool:
+        for _metrics in pool.imap_unordered(
+                partial(eval_on_fold, all_xs=all_xs, all_ys=all_ys),
+                ((train_idx, test_idx) for train_idx, test_idx in LabelKFold(
+                    [get_domain(doc['url']) for doc in with_labels], n_folds=4)
+                 if len(np.unique(all_ys[train_idx])) == 2)):
+            for k, v in _metrics.items():
                 metrics[k].append(v)
     logging.info('Training final model')
     clf = init_clf()
@@ -54,9 +60,10 @@ def init_clf() -> Pipeline:
     ])
 
 
-def eval_on_fold(all_xs, all_ys, train_idx, test_idx) -> Dict:
+def eval_on_fold(fold, all_xs, all_ys) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
+    train_idx, test_idx = fold
     clf = init_clf()
     clf.fit(flt_list(all_xs, train_idx), all_ys[train_idx])
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
