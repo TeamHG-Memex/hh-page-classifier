@@ -22,24 +22,27 @@ class Service:
             value_serializer=encode_message,
             **kafka_kwargs)
 
-    def run(self):
+    def run(self) -> None:
         for message in self.consumer:
             if message.value == {'from-tests': 'stop'}:
+                logging.info('Got message to stop (from tests)')
                 break
             self.handle_message(message.value)
 
-    def handle_message(self, message):
+    def handle_message(self, message: Dict) -> None:
         print(message)
         logging.info('Got training task with {} pages'.format(
             len(message.get('pages', []))))
-        self.producer.send(
-            self.output_topic,
-            {
-                'id': message['id'],
-                'quality': 'Accuracy is 0.84 and some other metric is 0.89',
-                'model': 'b64-encoded blob',
-            }
-        )
+        self.send_result({
+            'id': message['id'],
+            'quality': 'Accuracy is 0.84 and some other metric is 0.89',
+            'model': 'b64-encoded blob',
+        })
+
+    def send_result(self, result: Dict) -> None:
+        logging.info('Sending result for id {}'.format(result.get('id')))
+        self.producer.send(self.output_topic, result)
+        self.producer.flush()
 
 
 def encode_message(message: Dict) -> bytes:
