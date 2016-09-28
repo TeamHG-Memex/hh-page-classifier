@@ -6,6 +6,7 @@ import pickle
 from typing import Dict
 
 from kafka import KafkaConsumer, KafkaProducer
+from kafka.consumer.fetcher import ConsumerRecord
 
 from .train import train_model
 
@@ -21,33 +22,56 @@ class Service:
         self.consumer = KafkaConsumer(
             self.input_topic,
             value_deserializer=decode_message,
+            consumer_timeout_ms=10,
             **kafka_kwargs)
         self.producer = KafkaProducer(
             value_serializer=encode_message,
             **kafka_kwargs)
 
     def run(self) -> None:
-        for message in self.consumer:
-            if message.value == {'from-tests': 'stop'}:
-                logging.info('Got message to stop (from tests)')
-                break
-            self.handle_message(message.value)
+        to_send = {}
+        while True:
+            requests = {}  # type: Dict[str, ConsumerRecord]
+            order = {}
+            for idx, message in enumerate(self.consumer):
+                if message.value == {'from-tests': 'stop'}:
+                    logging.info('Got message to stop (from tests)')
+                    return
+                logging.info(
+                    'Got training task with {pages} pages, id "{id}", '
+                    'message checksum {checksum}, offset {offset}.'
+                        .format(
+                        pages=len(message.value.get('pages', [])),
+                        id=message.value.get('id'),
+                        checksum=message.checksum,
+                        offset=message.offset,
+                    ))
+                id_ = message.value['id']
+                requests[id_] = message.value
+                order[id_] = idx
             self.consumer.commit()
+            for id_, result in to_send.items():
+                if id_ in requests:
+                    logging.info(
+                        'Dropping result for id "{}", as new request arrived'
+                        .format(id_))
+                else:
+                    self.send_result(result)
+            to_send = {id_: self.train_model(request)
+                       for id_, request in sorted(requests.items(),
+                                                  key=lambda x: order[x[0]])}
 
-    def handle_message(self, message: Dict) -> None:
-        logging.info('Got training task with {} pages'.format(
-            len(message.get('pages', []))))
-        result = train_model(message['pages'])
-        serialized_model = encode_model(result.model)
-        logging.info('Sending result for id "{}", model size {} bytes'
-                     .format(message.get('id'), len(serialized_model)))
-        self.send_result({
-            'id': message['id'],
+    def train_model(self, request: Dict) -> Dict:
+        result = train_model(request['pages'])
+        return {
+            'id': request['id'],
             'quality': result.meta,
-            'model': serialized_model,
-        })
+            'model': encode_model(result.model),
+        }
 
     def send_result(self, result: Dict) -> None:
+        logging.info('Sending result for id "{}", model size {} bytes'
+                     .format(result.get('id'), len(result.get('model', ''))))
         self.producer.send(self.output_topic, result)
         self.producer.flush()
 

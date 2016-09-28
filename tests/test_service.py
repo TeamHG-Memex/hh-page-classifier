@@ -39,7 +39,6 @@ def test_training():
     service_thread = threading.Thread(target=service.run)
     service_thread.start()
     train_request = {
-        'id': 'some id',
         'pages': [
             {
                 'url': 'http://example-{}.com/foo'.format(n),
@@ -50,16 +49,13 @@ def test_training():
         ]
     }
 
-    def _test():
-        producer.send(ATestService.input_topic, train_request)
-        producer.flush()
-
+    def _test(request):
         train_response = next(consumer).value
         model = decode_model(train_response.pop('model'))  # type: Pipeline
         pprint(train_response)
 
         assert train_response == {
-            'id': 'some id',
+            'id': request['id'],
             'quality':
                 'Dataset: 10 documents, 100% with labels across 10 domains.\n'
                 'Class balance: 30% relevant, 70% not relevant.\n'
@@ -77,14 +73,24 @@ def test_training():
                 'example             : -0.05',
         }
 
-        page_neg, page_pos = train_request['pages'][:2]
+        page_neg, page_pos = request['pages'][:2]
         pred_proba = lambda page: \
             model.predict_proba([extract_text(page['html'])])[0][1]
         assert pred_proba(page_pos) > 0.5
         assert pred_proba(page_neg) < 0.5
 
-    _test()
-    _test()
+    request_1 = dict(train_request, id='some id 1')
+    request_2 = dict(train_request, id='some id 2')
+    producer.send(ATestService.input_topic, request_1)
+    # TODO
+   #producer.send(ATestService.input_topic, request_1)
+   #producer.send(ATestService.input_topic, request_2)
+    producer.flush()
+    _test(request_1)
+   #_test(request_2)
+    producer.send(ATestService.input_topic, request_1)
+    producer.flush()
+    _test(request_1)
 
     producer.send(ATestService.input_topic, {'from-tests': 'stop'})
     producer.flush()
