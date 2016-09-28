@@ -60,7 +60,7 @@ def eval_on_fold(all_xs, all_ys, train_idx, test_idx) -> Dict:
     clf = init_clf()
     clf.fit(flt_list(all_xs, train_idx), all_ys[train_idx])
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
-    pred_ys_prob = clf.predict_proba(test_xs)
+    pred_ys_prob = clf.predict_proba(test_xs)[:, 1]
     pred_ys = clf.predict(test_xs)
     try:
         auc = roc_auc_score(test_ys, pred_ys_prob)

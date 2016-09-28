@@ -49,6 +49,7 @@ def test_training():
             for n in range(10)
         ]
     }
+
     def _test():
         producer.send(ATestService.input_topic, train_request)
         producer.flush()

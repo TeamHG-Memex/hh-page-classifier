@@ -8,6 +8,10 @@ def test_train_model():
     data = fetch_20newsgroups(
         random_state=42,
         categories=['sci.crypt', 'sci.electronics', 'sci.med', 'sci.space'])
+    limit = None
+    if limit is not None:
+        data['target'] = data['target'][:limit]
+        data['data'] = data['data'][:limit]
     n_domains = int(len(data['target']) / 5)
     docs = [
         {
@@ -23,7 +27,7 @@ def test_train_model():
 Metrics:
 Accuracy            :   0.983 ± 0.008
 F1                  :   0.973 ± 0.011
-ROC AUC             :   nan ± nan
+ROC AUC             :   0.999 ± 0.002
 Dataset: 2373 documents, 75% with labels
 Class balance: 33% relevant, 67% not relevant
 Positive features:
