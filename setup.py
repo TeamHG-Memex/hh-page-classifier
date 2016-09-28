@@ -7,11 +7,13 @@ setup(
     packages=['hh_page_clf'],
     include_package_data=True,
     install_requires=[
+        'eli5',
         'html-text',
         'kafka-python',
         'numpy',
         'scikit-learn',
         'scipy',
+        'tldextract',
     ],
     entry_points = {
         'console_scripts': [
