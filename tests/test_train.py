@@ -10,7 +10,7 @@ from hh_page_clf.train import train_model as default_train_model
 
 def fit_clf(xs, ys) -> Pipeline:
     clf = Pipeline([
-        ('vect', CountVectorizer()),
+        ('vec', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
