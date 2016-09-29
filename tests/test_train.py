@@ -1,7 +1,22 @@
+from functools import partial
+
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.linear_model import LogisticRegressionCV
 
-from hh_page_clf.train import train_model
+from hh_page_clf.train import train_model as default_train_model
+
+
+def init_clf() -> Pipeline:
+    return Pipeline([
+        ('vect', CountVectorizer()),
+        ('tfidf', TfidfTransformer()),
+        ('clf', LogisticRegressionCV(random_state=42)),
+    ])
+
+
+train_model = partial(default_train_model, init_clf=init_clf)
 
 
 def test_train_model():
@@ -149,3 +164,16 @@ foo2                : -1.10
 foo1                : -1.10
 <BIAS>              : -0.79"""
     assert result.model is not None
+
+
+def test_default_clf():
+    docs = [{'html': 'foo{} bar'.format(i % 4),
+             'url': 'http://example{}.com'.format(i),
+             'relevant': i % 2 == 0}
+            for i in range(10)]
+    result = train_model(docs)
+    assert result.model is not None
+    assert result.meta.startswith("""\
+Dataset: 10 documents, 100% with labels across 10 domains.
+Class balance: 50% relevant, 50% not relevant.
+Metrics:""")

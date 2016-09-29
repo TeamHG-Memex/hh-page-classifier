@@ -11,6 +11,7 @@ from sklearn.pipeline import Pipeline
 
 from hh_page_clf.service import Service, encode_message, \
     encode_model, decode_model
+from .test_train import init_clf
 
 
 logging.basicConfig(
@@ -37,7 +38,7 @@ def test_training():
     consumer = KafkaConsumer(
         ATestService.output_topic,
         value_deserializer=decode_message)
-    service = ATestService()
+    service = ATestService(init_clf=init_clf)
     service_thread = threading.Thread(target=service.run)
     service_thread.start()
     train_request = {

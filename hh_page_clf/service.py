@@ -16,7 +16,8 @@ class Service:
     input_topic = 'dd-modeler-input'
     output_topic = 'dd-modeler-output'
 
-    def __init__(self, kafka_host=None):
+    def __init__(self, kafka_host=None, init_clf=None):
+        self.init_clf = init_clf
         kafka_kwargs = {}
         if kafka_host is not None:
             kafka_kwargs['bootstrap_servers'] = kafka_host
@@ -79,7 +80,7 @@ class Service:
             logging.info(
                 'Got training task with {pages} pages, id "{id}", '
                 'message checksum {checksum}, offset {offset}.'
-                    .format(
+                .format(
                     pages=len(value['pages']),
                     id=value.get('id'),
                     checksum=message.checksum,
@@ -93,7 +94,7 @@ class Service:
 
     def train_model(self, request: Dict) -> Dict:
         try:
-            result = train_model(request['pages'])
+            result = train_model(request['pages'], init_clf=self.init_clf)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
             return {

@@ -9,7 +9,8 @@ import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.linear_model import LogisticRegressionCV
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import tldextract
@@ -18,12 +19,13 @@ import tldextract
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict]) -> ModelMeta:
+def train_model(docs: List[Dict], init_clf=None) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
+    init_clf = init_clf or default_init_clf
     if not docs:
         return ModelMeta(
             model=None, meta='Can not train a model: no pages given.')
@@ -73,7 +75,9 @@ def train_model(docs: List[Dict]) -> ModelMeta:
     else:
         with multiprocessing.Pool() as pool:
             for _metrics in pool.imap_unordered(
-                    partial(eval_on_fold, all_xs=all_xs, all_ys=all_ys), folds):
+                    partial(eval_on_fold,
+                            all_xs=all_xs, all_ys=all_ys, init_clf=init_clf),
+                    folds):
                 for k, v in _metrics.items():
                     metrics[k].append(v)
 
@@ -86,15 +90,18 @@ def train_model(docs: List[Dict]) -> ModelMeta:
     return ModelMeta(model=clf, meta=meta)
 
 
-def init_clf() -> Pipeline:
+def default_init_clf() -> Pipeline:
     return Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
+        ('feature_selection', SelectFromModel(
+            SGDClassifier(loss='log', penalty='l1',
+                          n_iter=100, random_state=42))),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
 
 
-def eval_on_fold(fold, all_xs, all_ys) -> Dict:
+def eval_on_fold(fold, all_xs, all_ys, init_clf) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
