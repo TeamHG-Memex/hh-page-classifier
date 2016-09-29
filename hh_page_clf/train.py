@@ -8,6 +8,7 @@ from eli5.sklearn.explain_weights import explain_weights
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
+from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import Pipeline
@@ -188,9 +189,9 @@ def get_domain(url: str) -> str:
 def main():
     import argparse
     import json
-    import pickle
     import time
     from .utils import configure_logging
+    from .service import encode_model
 
     configure_logging()
     parser = argparse.ArgumentParser()
@@ -203,5 +204,4 @@ def main():
     t0 = time.time()
     result = train_model(message['pages'])
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
-    logging.info('Model size: {:,} bytes'.format(
-        len(pickle.dumps(result.model))))
+    logging.info('Model size: {:,} bytes'.format(len(encode_model(result.model))))

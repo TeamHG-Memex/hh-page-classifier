@@ -5,6 +5,7 @@ import json
 import pickle
 from pprint import pformat
 from typing import Dict, List, Tuple, Optional
+import zlib
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
@@ -128,12 +129,16 @@ def encode_message(message: Dict) -> bytes:
 
 def encode_model(model: object) -> Optional[str]:
     if model is not None:
-        return base64.b64encode(pickle.dumps(model, protocol=2)).decode('ascii')
+        return (
+            base64.b64encode(
+                zlib.compress(
+                    pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)))
+            .decode('ascii'))
 
 
 def decode_model(data: Optional[str]) -> object:
     if data is not None:
-        return pickle.loads(base64.b64decode(data))
+        return pickle.loads(zlib.decompress(base64.b64decode(data)))
 
 
 def main():
