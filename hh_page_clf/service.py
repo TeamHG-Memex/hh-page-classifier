@@ -14,7 +14,7 @@ from .train import train_model
 
 class Service:
     input_topic = 'dd-modeler-input'
-    output_topic = 'dd-modeler-input'
+    output_topic = 'dd-modeler-output'
 
     def __init__(self, kafka_host=None):
         kafka_kwargs = {}
