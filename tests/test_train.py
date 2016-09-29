@@ -8,15 +8,17 @@ from sklearn.linear_model import LogisticRegressionCV
 from hh_page_clf.train import train_model as default_train_model
 
 
-def init_clf() -> Pipeline:
-    return Pipeline([
+def fit_clf(xs, ys) -> Pipeline:
+    clf = Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
+    clf.fit(xs, ys)
+    return clf
 
 
-train_model = partial(default_train_model, init_clf=init_clf)
+train_model = partial(default_train_model, fit_clf=fit_clf)
 
 
 def test_train_model():

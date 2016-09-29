@@ -19,13 +19,13 @@ import tldextract
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict], init_clf=None) -> ModelMeta:
+def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
-    init_clf = init_clf or default_init_clf
+    fit_clf = fit_clf or default_fit_clf
     if not docs:
         return ModelMeta(
             model=None, meta='Can not train a model: no pages given.')
@@ -76,22 +76,21 @@ def train_model(docs: List[Dict], init_clf=None) -> ModelMeta:
         with multiprocessing.Pool() as pool:
             for _metrics in pool.imap_unordered(
                     partial(eval_on_fold,
-                            all_xs=all_xs, all_ys=all_ys, init_clf=init_clf),
+                            all_xs=all_xs, all_ys=all_ys, fit_clf=fit_clf),
                     folds):
                 for k, v in _metrics.items():
                     metrics[k].append(v)
 
     logging.info('Training final model')
-    clf = init_clf()
-    clf.fit(all_xs, all_ys)
+    clf = fit_clf(all_xs, all_ys)
     descr.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
     meta = '\n'.join(descr)
     logging.info('Model meta:\n{}'.format(meta))
     return ModelMeta(model=clf, meta=meta)
 
 
-def default_init_clf() -> Pipeline:
-    return Pipeline([
+def default_fit_clf(xs, ys) -> Pipeline:
+    clf = Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
     #   ('feature_selection', SelectFromModel(
@@ -99,14 +98,15 @@ def default_init_clf() -> Pipeline:
     #                     n_iter=100, random_state=42))),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
+    clf.fit(xs, ys)
+    return clf
 
 
-def eval_on_fold(fold, all_xs, all_ys, init_clf) -> Dict:
+def eval_on_fold(fold, all_xs, all_ys, fit_clf) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
-    clf = init_clf()
-    clf.fit(flt_list(all_xs, train_idx), all_ys[train_idx])
+    clf = fit_clf(flt_list(all_xs, train_idx), all_ys[train_idx])
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = clf.predict_proba(test_xs)[:, 1]
     pred_ys = clf.predict(test_xs)
