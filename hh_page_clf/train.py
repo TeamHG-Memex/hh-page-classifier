@@ -8,8 +8,7 @@ from eli5.sklearn.explain_weights import explain_weights
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.feature_selection import SelectFromModel
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
@@ -90,12 +89,20 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
 
 
 def default_fit_clf(xs, ys) -> Pipeline:
+    # Doing explicit feature selection because:
+    # - eli5 does not support pipelines with feature selection
+    # - final model should be small and does not need the whole vocabulary
+    vec = TfidfVectorizer()
+    transformed = vec.fit_transform(xs)
+    feature_selection_clf = SGDClassifier(
+        loss='log', penalty='l2', n_iter=50, random_state=42)
+    feature_selection_clf.fit(transformed, ys)
+    abs_coefs = np.abs(feature_selection_clf.coef_[0])
+    features = set((abs_coefs > np.mean(abs_coefs)).nonzero()[0])
+    # FIXME - relies on ngram_range=(1, 1) ?
+    vocabulary = [w for w, idx in vec.vocabulary_.items() if idx in features]
     clf = Pipeline([
-        ('vect', CountVectorizer()),
-        ('tfidf', TfidfTransformer()),
-    #   ('feature_selection', SelectFromModel(
-    #       SGDClassifier(loss='log', penalty='l1',
-    #                     n_iter=100, random_state=42))),
+        ('vec', TfidfVectorizer(vocabulary=vocabulary)),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
     clf.fit(xs, ys)
@@ -153,7 +160,7 @@ def describe_model(
         descr += ['{:<20}: {}'.format(k, v)
                   for k, v in sorted(aggr_metrics.items())]
     weights_explanation = explain_weights(
-        clf.named_steps['clf'], vec=clf.named_steps['vect'], top=10)
+        clf.named_steps['clf'], vec=clf.named_steps['vec'], top=10)
     feature_weights = weights_explanation['classes'][0]['feature_weights']
     descr.extend(features_descr(feature_weights, 'pos', 'Positive'))
     descr.extend(features_descr(feature_weights, 'neg', 'Negative'))
