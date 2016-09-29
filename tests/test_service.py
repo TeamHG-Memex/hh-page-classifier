@@ -90,10 +90,18 @@ def test_training():
     producer.send(ATestService.input_topic, request_1)
     producer.flush()
     producer.send(ATestService.input_topic, request_1)
+    producer.send(ATestService.input_topic, {'junk': True})
     producer.send(ATestService.input_topic, request_2)
+    producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
     producer.flush()
     _test(request_1)
     _test(request_2)
+    error_response = next(consumer).value
+    assert error_response == {
+        'id': '3',
+        'quality': "Unknown error while training a model: 'bool' object has no attribute 'get'",
+        'model': None,
+    }
 
     producer.send(ATestService.input_topic, {'from-tests': 'stop'})
     producer.flush()
@@ -107,3 +115,5 @@ def test_encode_model():
     p = Point(-1, 2.25)
     assert isinstance(encode_model(p), str)
     assert p == decode_model(encode_model(p))
+    assert decode_model(None) is None
+    assert encode_model(None) is None

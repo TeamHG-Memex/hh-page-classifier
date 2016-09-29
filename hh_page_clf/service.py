@@ -3,7 +3,8 @@ import base64
 import logging
 import json
 import pickle
-from typing import Dict, List, Tuple
+from pprint import pformat
+from typing import Dict, List, Tuple, Optional
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
@@ -39,21 +40,26 @@ class Service:
             requests = {}  # type: Dict[str, ConsumerRecord]
             order = {}  # type: Dict[str, int]
             for idx, message in enumerate(self.consumer):
-                if message.value == {'from-tests': 'stop'}:
+                value = message.value
+                if value == {'from-tests': 'stop'}:
                     logging.info('Got message to stop (from tests)')
                     return
-                logging.info(
-                    'Got training task with {pages} pages, id "{id}", '
-                    'message checksum {checksum}, offset {offset}.'
-                    .format(
-                        pages=len(message.value.get('pages', [])),
-                        id=message.value.get('id'),
-                        checksum=message.checksum,
-                        offset=message.offset,
-                    ))
-                id_ = message.value['id']
-                requests[id_] = message.value
-                order[id_] = idx
+                elif isinstance(value.get('pages'), list) and value.get('id'):
+                    logging.info(
+                        'Got training task with {pages} pages, id "{id}", '
+                        'message checksum {checksum}, offset {offset}.'
+                        .format(
+                            pages=len(value['pages']),
+                            id=value.get('id'),
+                            checksum=message.checksum,
+                            offset=message.offset,
+                        ))
+                    id_ = value['id']
+                    requests[id_] = message.value
+                    order[id_] = idx
+                else:
+                    logging.error('Dropping a message without "pages" key: {}'
+                                  .format(pformat(value)))
             self.consumer.commit()
             for id_, result in to_send:
                 if id_ in requests:
@@ -68,16 +74,26 @@ class Service:
                                                   key=lambda x: order[x[0]])]
 
     def train_model(self, request: Dict) -> Dict:
-        result = train_model(request['pages'])
-        return {
-            'id': request['id'],
-            'quality': result.meta,
-            'model': encode_model(result.model),
-        }
+        try:
+            result = train_model(request['pages'])
+        except Exception as e:
+            logging.error('Failed to train a model', exc_info=e)
+            return {
+                'id': request['id'],
+                'quality': 'Unknown error while training a model: {}'.format(e),
+                'model': None,
+            }
+        else:
+            return {
+                'id': request['id'],
+                'quality': result.meta,
+                'model': encode_model(result.model),
+            }
 
     def send_result(self, result: Dict) -> None:
         logging.info('Sending result for id "{}", model size {} bytes'
-                     .format(result.get('id'), len(result.get('model', ''))))
+                     .format(result.get('id'),
+                             len(result.get('model') or '')))
         self.producer.send(self.output_topic, result)
         self.producer.flush()
 
@@ -98,12 +114,14 @@ def decode_message(message: bytes) -> Dict:
         raise
 
 
-def encode_model(model: object) -> str:
-    return base64.b64encode(pickle.dumps(model, protocol=2)).decode('ascii')
+def encode_model(model: object) -> Optional[str]:
+    if model is not None:
+        return base64.b64encode(pickle.dumps(model, protocol=2)).decode('ascii')
 
 
-def decode_model(data: str) -> object:
-    return pickle.loads(base64.b64decode(data))
+def decode_model(data: Optional[str]) -> object:
+    if data is not None:
+        return pickle.loads(base64.b64decode(data))
 
 
 def main():
