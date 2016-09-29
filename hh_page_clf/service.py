@@ -3,7 +3,7 @@ import base64
 import logging
 import json
 import pickle
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
@@ -29,10 +29,15 @@ class Service:
             **kafka_kwargs)
 
     def run(self) -> None:
-        to_send = {}
+        """ Listen to messages with data to train on, and return trained models
+        with a report on model quality.
+        If several messages with the same id arrive, result of only the last one
+        will be sent back.
+        """
+        to_send = []  # type: List[Tuple[str, Dict]]
         while True:
             requests = {}  # type: Dict[str, ConsumerRecord]
-            order = {}
+            order = {}  # type: Dict[str, int]
             for idx, message in enumerate(self.consumer):
                 if message.value == {'from-tests': 'stop'}:
                     logging.info('Got message to stop (from tests)')
@@ -40,7 +45,7 @@ class Service:
                 logging.info(
                     'Got training task with {pages} pages, id "{id}", '
                     'message checksum {checksum}, offset {offset}.'
-                        .format(
+                    .format(
                         pages=len(message.value.get('pages', [])),
                         id=message.value.get('id'),
                         checksum=message.checksum,
@@ -50,16 +55,17 @@ class Service:
                 requests[id_] = message.value
                 order[id_] = idx
             self.consumer.commit()
-            for id_, result in to_send.items():
+            for id_, result in to_send:
                 if id_ in requests:
                     logging.info(
                         'Dropping result for id "{}", as new request arrived'
                         .format(id_))
                 else:
                     self.send_result(result)
-            to_send = {id_: self.train_model(request)
+            # Ordering is important only to simplify testing.
+            to_send = [(id_, self.train_model(request))
                        for id_, request in sorted(requests.items(),
-                                                  key=lambda x: order[x[0]])}
+                                                  key=lambda x: order[x[0]])]
 
     def train_model(self, request: Dict) -> Dict:
         result = train_model(request['pages'])
