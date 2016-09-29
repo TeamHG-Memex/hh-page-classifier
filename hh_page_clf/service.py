@@ -27,6 +27,7 @@ class Service:
         self.producer = KafkaProducer(
             value_serializer=encode_message,
             **kafka_kwargs)
+        self.stop_marker = object()
 
     def run(self) -> None:
         """ Listen to messages with data to train on, and return trained models
@@ -39,26 +40,10 @@ class Service:
             requests = {}  # type: Dict[str, ConsumerRecord]
             order = {}  # type: Dict[str, int]
             for idx, message in enumerate(self.consumer):
-                try:
-                    value = json.loads(message.value.decode('utf8'))
-                except Exception as e:
-                    logging.error('Error decoding message: {}'
-                                  .format(repr(message.value)),
-                                  exc_info=e)
-                    continue
-                if value == {'from-tests': 'stop'}:
-                    logging.info('Got message to stop (from tests)')
+                value = self.extract_value(message)
+                if value is self.stop_marker:
                     return
-                elif isinstance(value.get('pages'), list) and value.get('id'):
-                    logging.info(
-                        'Got training task with {pages} pages, id "{id}", '
-                        'message checksum {checksum}, offset {offset}.'
-                        .format(
-                            pages=len(value['pages']),
-                            id=value.get('id'),
-                            checksum=message.checksum,
-                            offset=message.offset,
-                        ))
+                elif value is not None:
                     id_ = value['id']
                     requests[id_] = value
                     order[id_] = idx
@@ -78,6 +63,33 @@ class Service:
             to_send = [(id_, self.train_model(request))
                        for id_, request in sorted(requests.items(),
                                                   key=lambda x: order[x[0]])]
+
+    def extract_value(self, message):
+        try:
+            value = json.loads(message.value.decode('utf8'))
+        except Exception as e:
+            logging.error('Error decoding message: {}'
+                          .format(repr(message.value)),
+                          exc_info=e)
+            return
+        if value == {'from-tests': 'stop'}:
+            logging.info('Got message to stop (from tests)')
+            return self.stop_marker
+        elif isinstance(value.get('pages'), list) and value.get('id'):
+            logging.info(
+                'Got training task with {pages} pages, id "{id}", '
+                'message checksum {checksum}, offset {offset}.'
+                    .format(
+                    pages=len(value['pages']),
+                    id=value.get('id'),
+                    checksum=message.checksum,
+                    offset=message.offset,
+                ))
+            return value
+        else:
+            logging.error(
+                'Dropping a message without "pages" or "id" key: {}'
+                    .format(pformat(value)))
 
     def train_model(self, request: Dict) -> Dict:
         try:

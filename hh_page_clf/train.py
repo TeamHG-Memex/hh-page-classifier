@@ -81,7 +81,9 @@ def train_model(docs: List[Dict]) -> ModelMeta:
     clf = init_clf()
     clf.fit(all_xs, all_ys)
     descr.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
-    return ModelMeta(model=clf, meta='\n'.join(descr))
+    meta = '\n'.join(descr)
+    logging.info('Model meta:\n{}'.format(meta))
+    return ModelMeta(model=clf, meta=meta)
 
 
 def init_clf() -> Pipeline:

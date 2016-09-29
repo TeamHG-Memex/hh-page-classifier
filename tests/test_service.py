@@ -1,13 +1,15 @@
 from collections import namedtuple
+import json
 import logging
 from pprint import pprint
 import threading
+from typing import Dict
 
 from html_text import extract_text
 from kafka import KafkaConsumer, KafkaProducer
 from sklearn.pipeline import Pipeline
 
-from hh_page_clf.service import Service, encode_message, decode_message, \
+from hh_page_clf.service import Service, encode_message, \
     encode_model, decode_model
 
 
@@ -117,3 +119,11 @@ def test_encode_model():
     assert p == decode_model(encode_model(p))
     assert decode_model(None) is None
     assert encode_model(None) is None
+
+
+def decode_message(message: bytes) -> Dict:
+    try:
+        return json.loads(message.decode('utf8'))
+    except Exception as e:
+        logging.error('Error deserializing message', exc_info=e)
+        raise

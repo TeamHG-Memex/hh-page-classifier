@@ -10,10 +10,15 @@ def main():
     parser.add_argument('topic')
     parser.add_argument('filename')
     parser.add_argument('--kafka-host')
+    parser.add_argument('--validate', action='store_true')
     args = parser.parse_args()
 
-    with open(args.filename) as f:
-        data = json.dumps(json.load(f)).encode('utf8')
+    if args.validate:
+        with open(args.filename, 'rt') as f:
+            data = json.dumps(json.load(f)).encode('utf8')
+    else:
+        with open(args.filename, 'rb') as f:
+            data = f.read()
 
     kafka_kwargs = {}
     if args.kafka_host:
