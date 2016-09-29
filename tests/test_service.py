@@ -11,12 +11,11 @@ from sklearn.pipeline import Pipeline
 
 from hh_page_clf.service import Service, encode_message, \
     encode_model, decode_model
+from hh_page_clf.utils import configure_logging
 from .test_train import init_clf
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(module)s: %(message)s')
+configure_logging()
 
 
 class ATestService(Service):

@@ -17,7 +17,9 @@ setup(
     ],
     entry_points = {
         'console_scripts': [
-            'hh-page-clf-service=hh_page_clf.service:main'],
+            'hh-page-clf-service=hh_page_clf.service:main',
+            'hh-page-clf-train=hh_page_clf.train:main',
+        ],
     },
     classifiers=[
         'Topic :: Internet :: WWW/HTTP :: Indexing/Search',

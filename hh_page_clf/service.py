@@ -10,6 +10,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
 
 from .train import train_model
+from .utils import configure_logging
 
 
 class Service:
@@ -141,9 +142,7 @@ def main():
     arg('--kafka-host')
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(module)s: %(message)s')
+    configure_logging()
     service = Service(kafka_host=args.kafka_host)
     logging.info('Starting hh page classifier service')
     service.run()

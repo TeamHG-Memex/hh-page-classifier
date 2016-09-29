@@ -94,9 +94,9 @@ def default_init_clf() -> Pipeline:
     return Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
-        ('feature_selection', SelectFromModel(
-            SGDClassifier(loss='log', penalty='l1',
-                          n_iter=100, random_state=42))),
+    #   ('feature_selection', SelectFromModel(
+    #       SGDClassifier(loss='log', penalty='l1',
+    #                     n_iter=100, random_state=42))),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
 
@@ -178,3 +178,23 @@ def get_domain(url: str) -> str:
     return tldextract.extract(url).registered_domain.lower()
 
 
+def main():
+    import argparse
+    import json
+    import pickle
+    import time
+    from .utils import configure_logging
+
+    configure_logging()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('message_filename')
+    args = parser.parse_args()
+    with open(args.message_filename) as f:
+        logging.info('Decoding message')
+        message = json.load(f)
+    logging.info('Done, starting train_model')
+    t0 = time.time()
+    result = train_model(message['pages'])
+    logging.info('Training took {:.1f} s'.format(time.time() - t0))
+    logging.info('Model size: {:,} bytes'.format(
+        len(pickle.dumps(result.model))))
