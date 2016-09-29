@@ -46,9 +46,12 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                     class_names[only_cls], class_names[not only_cls]))
 
     logging.info('Extracting text')
-    all_xs = [html_text.extract_text(doc['html']) for doc in with_labels]
+    with multiprocessing.Pool() as pool:
+        all_xs = pool.map(html_text.extract_text,
+                          [doc['html'] for doc in with_labels],
+                          chunksize=100)
 
-    logging.info('Evaluating model')
+    logging.info('Training and evaluating model')
     metrics = defaultdict(list)
     domains = [get_domain(doc['url']) for doc in with_labels]
     n_domains = len(set(domains))
@@ -67,22 +70,22 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                 'Warning: low number of domains (just {}) '
                 'might result in model over-fitting.'.format(n_domains)]
     folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
-    if not folds:
-        descr += [
-            'Warning: Can not do cross-validation, as there are no folds where '
-            'training data has both relevant and non-relevant examples. '
-            'There are too few domains or the dataset is too unbalanced.']
-    else:
-        with multiprocessing.Pool() as pool:
+    with multiprocessing.Pool() as pool:
+        clf_future = pool.apply_async(fit_clf, args=(all_xs, all_ys))
+        if folds:
             for _metrics in pool.imap_unordered(
                     partial(eval_on_fold,
                             all_xs=all_xs, all_ys=all_ys, fit_clf=fit_clf),
                     folds):
                 for k, v in _metrics.items():
                     metrics[k].append(v)
+        else:
+            descr += [
+                'Warning: Can not do cross-validation, as there are no folds where '
+                'training data has both relevant and non-relevant examples. '
+                'There are too few domains or the dataset is too unbalanced.']
+        clf = clf_future.get()
 
-    logging.info('Training final model')
-    clf = fit_clf(all_xs, all_ys)
     descr.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
     meta = '\n'.join(descr)
     logging.info('Model meta:\n{}'.format(meta))
