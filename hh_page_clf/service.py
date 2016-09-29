@@ -22,7 +22,6 @@ class Service:
             kafka_kwargs['bootstrap_servers'] = kafka_host
         self.consumer = KafkaConsumer(
             self.input_topic,
-            value_deserializer=decode_message,
             consumer_timeout_ms=10,
             **kafka_kwargs)
         self.producer = KafkaProducer(
@@ -40,7 +39,13 @@ class Service:
             requests = {}  # type: Dict[str, ConsumerRecord]
             order = {}  # type: Dict[str, int]
             for idx, message in enumerate(self.consumer):
-                value = message.value
+                try:
+                    value = json.loads(message.value.decode('utf8'))
+                except Exception as e:
+                    logging.error('Error decoding message: {}'
+                                  .format(repr(message.value)),
+                                  exc_info=e)
+                    continue
                 if value == {'from-tests': 'stop'}:
                     logging.info('Got message to stop (from tests)')
                     return
@@ -55,11 +60,12 @@ class Service:
                             offset=message.offset,
                         ))
                     id_ = value['id']
-                    requests[id_] = message.value
+                    requests[id_] = value
                     order[id_] = idx
                 else:
-                    logging.error('Dropping a message without "pages" key: {}'
-                                  .format(pformat(value)))
+                    logging.error(
+                        'Dropping a message without "pages" or "id" key: {}'
+                        .format(pformat(value)))
             self.consumer.commit()
             for id_, result in to_send:
                 if id_ in requests:
@@ -103,14 +109,6 @@ def encode_message(message: Dict) -> bytes:
         return json.dumps(message).encode('utf8')
     except Exception as e:
         logging.error('Error serializing message', exc_info=e)
-        raise
-
-
-def decode_message(message: bytes) -> Dict:
-    try:
-        return json.loads(message.decode('utf8'))
-    except Exception as e:
-        logging.error('Error deserializing message', exc_info=e)
         raise
 
 
