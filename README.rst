@@ -50,6 +50,8 @@ if running on a different network)::
 Testing
 -------
 
+Install ``pytest`` and ``pytest-cov``.
+
 Start kafka with zookeper::
 
     docker run -p 2181:2181 -p 9092:9092 \
