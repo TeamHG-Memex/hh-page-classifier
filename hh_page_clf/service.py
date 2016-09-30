@@ -50,10 +50,6 @@ class Service:
                     id_ = value['id']
                     requests[id_] = value
                     order[id_] = idx
-                else:
-                    logging.error(
-                        'Dropping a message without "pages" or "id" key: {}'
-                        .format(pformat(value)))
             self.consumer.commit()
             for id_, result in to_send:
                 if id_ in requests:
@@ -112,7 +108,7 @@ class Service:
             }
 
     def send_result(self, result: Dict) -> None:
-        logging.info('Sending result for id "{}", model size {} bytes'
+        logging.info('Sending result for id "{}", model size {:,} bytes'
                      .format(result.get('id'),
                              len(result.get('model') or '')))
         self.producer.send(self.output_topic, result)
