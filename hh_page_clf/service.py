@@ -17,6 +17,7 @@ from .utils import configure_logging
 class Service:
     input_topic = 'dd-modeler-input'
     output_topic = 'dd-modeler-output'
+    max_message_size = 104857600
 
     def __init__(self, kafka_host=None, fit_clf=None):
         self.fit_clf = fit_clf
@@ -25,10 +26,12 @@ class Service:
             kafka_kwargs['bootstrap_servers'] = kafka_host
         self.consumer = KafkaConsumer(
             self.input_topic,
+            max_partition_fetch_bytes=self.max_message_size,
             consumer_timeout_ms=10,
             **kafka_kwargs)
         self.producer = KafkaProducer(
             value_serializer=encode_message,
+            max_request_size=self.max_message_size,
             **kafka_kwargs)
         self.stop_marker = object()
 

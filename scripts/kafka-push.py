@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 
 from kafka import KafkaProducer
 
@@ -20,10 +21,12 @@ def main():
         with open(args.filename, 'rb') as f:
             data = f.read()
 
+    logging.basicConfig(level=logging.ERROR)
     kafka_kwargs = {}
     if args.kafka_host:
         kafka_kwargs['bootstrap_servers'] = args.kafka_host
-    producer = KafkaProducer(**kafka_kwargs)
+    producer = KafkaProducer(
+        max_request_size=104857600, **kafka_kwargs)
 
     producer.send(args.topic, data)
     producer.flush()
