@@ -33,8 +33,8 @@ Outgoing message with trained model::
 
     {
       "id": "the same id",
-      "quality": json.dumps([("Accuracy", "0.84"), ("some other metric", "0.89")]),
-      "model": "a huge b64-encoded blob?"
+      "quality": "[[\"Accuracy\", \"0.84\"], [\"some other metric\", \"0.89\"]]",
+      "model": "b64-encoded page classifier model"
     }
 
 
