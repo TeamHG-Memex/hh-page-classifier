@@ -2,7 +2,7 @@ from collections import defaultdict, namedtuple
 from functools import partial
 import logging
 import multiprocessing
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 from eli5.sklearn.explain_weights import explain_weights
 import html_text
@@ -28,11 +28,12 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     fit_clf = fit_clf or default_fit_clf
     if not docs:
         return ModelMeta(
-            model=None, meta='Can not train a model: no pages given.')
+            model=None, meta=[('Can not train a model', 'no pages given.')])
     with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
     if not with_labels:
         return ModelMeta(
-            model=None, meta='Can not train a model: no labeled pages given.')
+            model=None,
+            meta=[('Can not train a model', 'no labeled pages given.')])
 
     all_ys = np.array([doc['relevant'] for doc in with_labels])
     classes = np.unique(all_ys)
@@ -41,9 +42,11 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
         class_names = ['not relevant', 'relevant']
         return ModelMeta(
             model=None,
-            meta='Can not train a model. Only {} pages in sample: '
-                 'need examples of {} pages too.'.format(
-                    class_names[only_cls], class_names[not only_cls]))
+            meta=[('Can not train a model',
+                   'Only {} pages in sample: '
+                   'need examples of {} pages too.'.format(
+                       class_names[only_cls], class_names[not only_cls])),
+                  ])
 
     logging.info('Extracting text')
     with multiprocessing.Pool() as pool:
@@ -56,19 +59,21 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     domains = [get_domain(doc['url']) for doc in with_labels]
     n_domains = len(set(domains))
     n_folds = 4
-    descr = []
+    meta = []
     if n_domains == 1:
-        descr += [
-            'Warning: only 1 domain in data means that it\'s impossible to do '
+        meta.append((
+            'Warning',
+            'only 1 domain in data means that it\'s impossible to do '
             'cross-validation across domains, '
-            'and might result in model over-fitting.']
+            'and might result in model over-fitting.'))
         folds = KFold(len(all_xs), n_folds=n_folds)
     else:
         folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
         if n_domains < n_folds:
-            descr += [
-                'Warning: low number of domains (just {}) '
-                'might result in model over-fitting.'.format(n_domains)]
+            meta.append((
+                'Warning',
+                'low number of domains (just {}) '
+                'might result in model over-fitting.'.format(n_domains)))
     folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
     with multiprocessing.Pool() as pool:
         clf_future = pool.apply_async(fit_clf, args=(all_xs, all_ys))
@@ -80,16 +85,23 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                 for k, v in _metrics.items():
                     metrics[k].append(v)
         else:
-            descr += [
-                'Warning: Can not do cross-validation, as there are no folds where '
+            meta.append((
+                'Warning',
+                'can not do cross-validation, as there are no folds where '
                 'training data has both relevant and non-relevant examples. '
-                'There are too few domains or the dataset is too unbalanced.']
+                'There are too few domains or the dataset is too unbalanced.'))
         clf = clf_future.get()
 
-    descr.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
-    meta = '\n'.join(descr)
-    logging.info('Model meta:\n{}'.format(meta))
+    meta.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
+    logging.info('Model meta:\n{}'.format(meta_fmt(meta)))
     return ModelMeta(model=clf, meta=meta)
+
+
+MetaItem = Tuple[str, str]
+
+
+def meta_fmt(meta: List[MetaItem]) -> str:
+    return '\n'.join('{}: {}'.format(k, v) for k, v in meta)
 
 
 def default_fit_clf(xs, ys) -> Pipeline:
@@ -140,49 +152,51 @@ def flt_list(lst: List, indices: np.ndarray) -> List:
 
 def describe_model(
         clf: Pipeline, metrics: Dict,
-        docs: List[Dict], with_labels: List[Dict], n_domains: int) -> List[str]:
+        docs: List[Dict], with_labels: List[Dict], n_domains: int)\
+        -> List[MetaItem]:
     """ Return a human-readable model description.
     """
-    descr = []
-    descr += [
-        'Dataset: {n_docs} documents, {labeled_ratio:.0%} with labels '
+    meta = []
+    meta.append((
+        'Dataset',
+        '{n_docs} documents, {labeled_ratio:.0%} with labels '
         'across {n_domains} domain{s}.'.format(
             n_docs=len(docs),
             labeled_ratio=len(with_labels) / len(docs),
             n_domains=n_domains,
             s='s' if n_domains > 1 else '',
-        )]
+        )))
     relevant = [doc for doc in docs if doc['relevant']]
     relevant_ratio = len(relevant) / len(with_labels)
-    descr += ['Class balance: {:.0%} relevant, {:.0%} not relevant.'
-                  .format(relevant_ratio, 1. - relevant_ratio)]
+    meta.append(('Class balance',
+                 '{:.0%} relevant, {:.0%} not relevant.'
+                 .format(relevant_ratio, 1. - relevant_ratio)))
     if metrics:
-        descr += ['Metrics:']
-        aggr_metrics = {
-            k: '  {:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v))
-            for k, v in metrics.items()}
-        descr += ['{:<20}: {}'.format(k, v)
-                  for k, v in sorted(aggr_metrics.items())]
+        meta.append(('Metrics', ''))
+        meta.extend(
+            (k, '{:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v)))
+            for k, v in sorted(metrics.items()))
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=10)
     feature_weights = weights_explanation['classes'][0]['feature_weights']
-    descr.extend(features_descr(feature_weights, 'pos', 'Positive'))
-    descr.extend(features_descr(feature_weights, 'neg', 'Negative'))
+    meta.extend(features_descr(feature_weights, 'pos', 'Positive'))
+    meta.extend(features_descr(feature_weights, 'neg', 'Negative'))
     # TODO - some advice: are metrics good or bad, how is the class balance
-    return descr
+    return meta
 
 
-def features_descr(feature_weights, key, key_name):
+def features_descr(feature_weights, key, key_name) -> List[MetaItem]:
     rem_key = '{}_remaining'.format(key)
-    descr = []
+    meta = []
     if key in feature_weights or rem_key in feature_weights:
-        descr += ['{} features:'.format(key_name)]
-        descr.extend('{:<20}: {:.2f}'.format(feature, weight)
+        meta.append(('{} features'.format(key_name), ''))
+        meta.extend((str(feature), '{:.2f}'.format(weight))
                      for feature, weight in feature_weights.get(key, []))
         remaining = feature_weights.get(rem_key)
         if remaining:
-            descr += ['Other {} features: {}'.format(key_name.lower(), remaining)]
-    return descr
+            meta.append(('Other {} features'.format(key_name.lower()),
+                         str(remaining)))
+    return meta
 
 
 def get_domain(url: str) -> str:

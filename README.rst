@@ -33,7 +33,7 @@ Outgoing message with trained model::
 
     {
       "id": "the same id",
-      "quality": "Accuracy is 0.84 and some other metric is 0.89",
+      "quality": json.dumps([("Accuracy", "0.84"), ("some other metric", "0.89")]),
       "model": "a huge b64-encoded blob?"
     }
 

@@ -100,13 +100,14 @@ class Service:
             logging.error('Failed to train a model', exc_info=e)
             return {
                 'id': request['id'],
-                'quality': 'Unknown error while training a model: {}'.format(e),
+                'quality': json.dumps([
+                    ('Unknown error while training a model', str(e))]),
                 'model': None,
             }
         else:
             return {
                 'id': request['id'],
-                'quality': result.meta,
+                'quality': json.dumps(result.meta),
                 'model': encode_model(result.model),
             }
 

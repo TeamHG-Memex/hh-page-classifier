@@ -58,21 +58,22 @@ def test_training():
 
         assert train_response == {
             'id': request['id'],
-            'quality':
-                'Dataset: 10 documents, 100% with labels across 10 domains.\n'
-                'Class balance: 30% relevant, 70% not relevant.\n'
-                'Metrics:\n'
-                'Accuracy            :   1.000 ± 0.000\n'
-                'F1                  :   0.750 ± 0.849\n'
-                'ROC AUC             :   nan ± nan\n'
-                'Positive features:\n'
-                'number1             : 2.16\n'
-                'Negative features:\n'
-                'number0             : -1.14\n'
-                'number2             : -0.97\n'
-                '<BIAS>              : -0.96\n'
-                'hi                  : -0.05\n'
-                'example             : -0.05',
+            'quality': json.dumps([
+                ('Dataset', '10 documents, 100% with labels across 10 domains.'),
+                ('Class balance', '30% relevant, 70% not relevant.'),
+                ('Metrics', ''),
+                ('Accuracy', '1.000 ± 0.000'),
+                ('F1', '0.750 ± 0.849'),
+                ('ROC AUC', 'nan ± nan'),
+                ('Positive features', ''),
+                ('number1', '2.16'),
+                ('Negative features', ''),
+                ('number0', '-1.14'),
+                ('number2', '-0.97'),
+                ('<BIAS>', '-0.96'),
+                ('hi', '-0.05'),
+                ('example', '-0.05'),
+            ])
         }
 
         page_neg, page_pos = request['pages'][:2]
@@ -101,7 +102,9 @@ def test_training():
     error_response = next(consumer).value
     assert error_response == {
         'id': '3',
-        'quality': "Unknown error while training a model: 'bool' object has no attribute 'get'",
+        'quality': json.dumps([
+            ('Unknown error while training a model',
+             "'bool' object has no attribute 'get'")]),
         'model': None,
     }
 

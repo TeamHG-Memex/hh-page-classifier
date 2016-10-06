@@ -40,34 +40,35 @@ def test_train_model():
         for n, (text, target) in enumerate(zip(data['data'], data['target']))]
     result = train_model(docs)
     print(result.meta)
-    assert result.meta == '''\
-Dataset: 2373 documents, 75% with labels across 473 domains.
-Class balance: 33% relevant, 67% not relevant.
-Metrics:
-Accuracy            :   0.983 ± 0.008
-F1                  :   0.973 ± 0.011
-ROC AUC             :   0.999 ± 0.002
-Positive features:
-space               : 37.16
-orbit               : 14.87
-moon                : 13.75
-launch              : 12.92
-dc                  : 11.78
-nasa                : 11.31
-earth               : 10.79
-rockets             : 10.48
-Other positive features: 11506
-Negative features:
-chip                : -12.32
-key                 : -10.66
-Other negative features: 18105'''
+    assert result.meta == [
+        ('Dataset', '2373 documents, 75% with labels across 473 domains.'),
+        ('Class balance', '33% relevant, 67% not relevant.'),
+        ('Metrics', ''),
+        ('Accuracy', '0.983 ± 0.008'),
+        ('F1', '0.973 ± 0.011'),
+        ('ROC AUC', '0.999 ± 0.002'),
+        ('Positive features', ''),
+        ('space', '37.16'),
+        ('orbit', '14.87'),
+        ('moon', '13.75'),
+        ('launch', '12.92'),
+        ('dc', '11.78'),
+        ('nasa', '11.31'),
+        ('earth', '10.79'),
+        ('rockets', '10.48'),
+        ('Other positive features', '11506'),
+        ('Negative features', ''),
+        ('chip', '-12.32'),
+        ('key', '-10.66'),
+        ('Other negative features', '18105'),
+    ]
     assert isinstance(result.model, Pipeline)
     assert hasattr(result.model, 'predict_proba')
 
 
 def test_empty():
     result = train_model([])
-    assert result.meta == 'Can not train a model: no pages given.'
+    assert result.meta == [('Can not train a model', 'no pages given.')]
     assert result.model is None
 
 
@@ -77,7 +78,7 @@ def test_unlabeled():
              'relevant': None}
             for i in range(10)]
     result = train_model(docs)
-    assert result.meta == 'Can not train a model: no labeled pages given.'
+    assert result.meta == [('Can not train a model', 'no labeled pages given.')]
     assert result.model is None
 
 
@@ -87,9 +88,10 @@ def test_unbalanced():
              'relevant': True}
             for i in range(10)]
     result = train_model(docs)
-    assert result.meta == (
-        'Can not train a model. Only relevant pages in sample: '
-        'need examples of not relevant pages too.')
+    assert result.meta == [
+        ('Can not train a model',
+         'only relevant pages in sample: '
+         'need examples of not relevant pages too.')]
     assert result.model is None
 
     docs = [{'html': 'foo',
@@ -97,9 +99,10 @@ def test_unbalanced():
              'relevant': False}
             for i in range(10)]
     result = train_model(docs)
-    assert result.meta == (
-        'Can not train a model. Only not relevant pages in sample: '
-        'need examples of relevant pages too.')
+    assert result.meta == [
+        ('Can not train a model',
+         'Only not relevant pages in sample: '
+         'need examples of relevant pages too.')]
     assert result.model is None
 
 
@@ -109,20 +112,21 @@ def test_single_domain():
              'relevant': i % 2 == 0}
             for i in range(10)]
     result = train_model(docs)
-    assert result.meta == """\
-Warning: only 1 domain in data means that it's impossible to do cross-validation across domains, and might result in model over-fitting.
-Dataset: 10 documents, 100% with labels across 1 domain.
-Class balance: 50% relevant, 50% not relevant.
-Metrics:
-Accuracy            :   1.000 ± 0.000
-F1                  :   1.000 ± 0.000
-ROC AUC             :   1.000 ± 0.000
-Positive features:
-foo0                : 0.00
-foo2                : 0.00
-Negative features:
-foo1                : -0.00
-foo3                : -0.00"""
+    assert result.meta == [
+        ('Warning', 'only 1 domain in data means that it\'s impossible to do cross-validation across domains, and might result in model over-fitting.'),
+        ('Dataset', '10 documents, 100% with labels across 1 domain.'),
+        ('Class balance', '50% relevant, 50% not relevant.'),
+        ('Metrics', ''),
+        ('Accuracy', '1.000 ± 0.000'),
+        ('F1', '1.000 ± 0.000'),
+        ('ROC AUC', '1.000 ± 0.000'),
+        ('Positive features', ''),
+        ('foo0', '0.00'),
+        ('foo2', '0.00'),
+        ('Negative features', ''),
+        ('foo1', '-0.00'),
+        ('foo3', '-0.00'),
+    ]
     assert result.model is not None
 
 
@@ -132,16 +136,18 @@ def test_two_domains_bad_folds():
              'relevant': i % 2 == 0}
             for i in range(10)]
     result = train_model(docs)
-    assert result.meta == """Warning: low number of domains (just 2) might result in model over-fitting.
-Warning: Can not do cross-validation, as there are no folds where training data has both relevant and non-relevant examples. There are too few domains or the dataset is too unbalanced.
-Dataset: 10 documents, 100% with labels across 2 domains.
-Class balance: 50% relevant, 50% not relevant.
-Positive features:
-foo0                : 0.00
-foo2                : 0.00
-Negative features:
-foo1                : -0.00
-foo3                : -0.00"""
+    assert result.meta == [
+        ('Warning', 'low number of domains (just 2) might result in model over-fitting.'),
+        ('Warning', 'Can not do cross-validation, as there are no folds where training data has both relevant and non-relevant examples. There are too few domains or the dataset is too unbalanced.'),
+        ('Dataset', '10 documents, 100% with labels across 2 domains.'),
+        ('Class balance', '50% relevant, 50% not relevant.'),
+        ('Positive features', ''),
+        ('foo0', '0.00'),
+        ('foo2', '0.00'),
+        ('Negative features', ''),
+        ('foo1', '-0.00'),
+        ('foo3', '-0.00'),
+    ]
     assert result.model is not None
 
 
@@ -152,19 +158,21 @@ def test_two_domains():
             for i in range(10)]
     result = train_model(docs)
     print(result.meta)
-    assert result.meta == """Warning: low number of domains (just 2) might result in model over-fitting.
-Dataset: 10 documents, 100% with labels across 2 domains.
-Class balance: 40% relevant, 60% not relevant.
-Metrics:
-Accuracy            :   1.000 ± 0.000
-F1                  :   1.000 ± 0.000
-ROC AUC             :   1.000 ± 0.000
-Positive features:
-foo0                : 2.19
-Negative features:
-foo2                : -1.10
-foo1                : -1.10
-<BIAS>              : -0.79"""
+    assert result.meta == [
+        ('Warning', 'low number of domains (just 2) might result in model over-fitting.'),
+        ('Dataset', '10 documents, 100% with labels across 2 domains.'),
+        ('Class balance', '40% relevant, 60% not relevant.'),
+        ('Metrics', ''),
+        ('Accuracy', '1.000 ± 0.000'),
+        ('F1', '1.000 ± 0.000'),
+        ('ROC AUC', '1.000 ± 0.000'),
+        ('Positive features', ''),
+        ('foo0', '2.19'),
+        ('Negative features', ''),
+        ('foo2', '-1.10'),
+        ('foo1', '-1.10'),
+        ('<BIAS>', '-0.79'),
+    ]
     assert result.model is not None
 
 
@@ -175,7 +183,8 @@ def test_default_clf():
             for i in range(10)]
     result = train_model(docs)
     assert result.model is not None
-    assert result.meta.startswith("""\
-Dataset: 10 documents, 100% with labels across 10 domains.
-Class balance: 50% relevant, 50% not relevant.
-Metrics:""")
+    assert result.meta[:3] == [
+        ('Dataset', '10 documents, 100% with labels across 10 domains'),
+        ('Class balance', '50% relevant, 50% not relevant.'),
+        ('Metrics', ''),
+    ]
