@@ -8,7 +8,6 @@ from eli5.sklearn.explain_weights import explain_weights
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
-from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import Pipeline
@@ -222,24 +221,23 @@ def describe_model(
 
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=10)
-    feature_weights = weights_explanation['classes'][0]['feature_weights']
-    meta.extend(features_descr(feature_weights, 'pos', 'Positive'))
-    meta.extend(features_descr(feature_weights, 'neg', 'Negative'))
+    fw = weights_explanation.targets[0].feature_weights
+    meta.extend(features_descr(fw.pos, fw.pos_remaining, 'Positive'))
+    meta.extend(features_descr(fw.neg, fw.neg_remaining, 'Negative'))
 
     return meta
 
 
-def features_descr(feature_weights, key, key_name) -> List[MetaItem]:
-    rem_key = '{}_remaining'.format(key)
+def features_descr(features: List[Tuple[str, float]],
+                   remaining_features: int, group_name: str) -> List[MetaItem]:
     meta = []
-    if key in feature_weights or rem_key in feature_weights:
-        meta.append(('{} features'.format(key_name), ''))
+    if features or remaining_features:
+        meta.append(('{} features'.format(group_name), ''))
         meta.extend((str(feature), '{:.2f}'.format(weight))
-                     for feature, weight in feature_weights.get(key, []))
-        remaining = feature_weights.get(rem_key)
-        if remaining:
-            meta.append(('Other {} features'.format(key_name.lower()),
-                         str(remaining)))
+                     for feature, weight in features)
+        if remaining_features:
+            meta.append(('Other {} features'.format(group_name.lower()),
+                         str(remaining_features)))
     return meta
 
 
