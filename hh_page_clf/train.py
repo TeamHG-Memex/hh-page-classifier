@@ -28,12 +28,12 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     fit_clf = fit_clf or default_fit_clf
     if not docs:
         return ModelMeta(
-            model=None, meta=[('Can not train a model', 'no pages given.')])
+            model=None, meta=[('Can not train a model', 'No pages given.')])
     with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
     if not with_labels:
         return ModelMeta(
             model=None,
-            meta=[('Can not train a model', 'no labeled pages given.')])
+            meta=[('Can not train a model', 'No labeled pages given.')])
 
     all_ys = np.array([doc['relevant'] for doc in with_labels])
     classes = np.unique(all_ys)
@@ -59,21 +59,19 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     domains = [get_domain(doc['url']) for doc in with_labels]
     n_domains = len(set(domains))
     n_folds = 4
-    meta = []
+    warnings = []
     if n_domains == 1:
-        meta.append((
-            'Warning',
-            'only 1 domain in data means that it\'s impossible to do '
+        warnings.append(
+            'Only 1 domain in data means that it\'s impossible to do '
             'cross-validation across domains, '
-            'and might result in model over-fitting.'))
+            'and might result in model over-fitting.')
         folds = KFold(len(all_xs), n_folds=n_folds)
     else:
         folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
         if n_domains < n_folds:
-            meta.append((
-                'Warning',
-                'low number of domains (just {}) '
-                'might result in model over-fitting.'.format(n_domains)))
+            warnings.append(
+                'Low number of domains (just {}) '
+                'might result in model over-fitting.'.format(n_domains))
     folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
     with multiprocessing.Pool() as pool:
         clf_future = pool.apply_async(fit_clf, args=(all_xs, all_ys))
@@ -85,14 +83,13 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                 for k, v in _metrics.items():
                     metrics[k].append(v)
         else:
-            meta.append((
-                'Warning',
-                'can not do cross-validation, as there are no folds where '
+            warnings.append(
+                'Can not do cross-validation, as there are no folds where '
                 'training data has both relevant and non-relevant examples. '
-                'There are too few domains or the dataset is too unbalanced.'))
+                'There are too few domains or the dataset is too unbalanced.')
         clf = clf_future.get()
 
-    meta.extend(describe_model(clf, metrics, docs, with_labels, n_domains))
+    meta = describe_model(clf, metrics, warnings, docs, with_labels, n_domains)
     logging.info('Model meta:\n{}'.format(meta_fmt(meta)))
     return ModelMeta(model=clf, meta=meta)
 
@@ -150,24 +147,70 @@ def flt_list(lst: List, indices: np.ndarray) -> List:
     return [x for i, x in enumerate(lst) if i in indices]
 
 
+WARN_N_LABELED = 100
+WARN_RELEVANT_RATIO_HIGH = 0.75
+WARN_RELEVANT_RATIO_LOW = 0.05
+WARN_ROC_AUC = 0.85
+DANGER_ROC_AUC = 0.65
+
+
 def describe_model(
-        clf: Pipeline, metrics: Dict,
+        clf: Pipeline, metrics: Dict[str, List[float]], warnings: List[str],
         docs: List[Dict], with_labels: List[Dict], n_domains: int)\
         -> List[MetaItem]:
     """ Return a human-readable model description.
     """
     meta = []
+    n_docs = len(docs)
+    n_labeled = len(with_labels)
+    relevant = [doc for doc in docs if doc['relevant']]
+    relevant_ratio = len(relevant) / n_labeled
+
+    if n_labeled < WARN_N_LABELED:
+        warnings.append(
+            'Number of labeled documents is just {n_labeled}, '
+            'consider having at least {min_labeled} labeled.'
+            .format(n_labeled=n_labeled, min_labeled=WARN_N_LABELED))
+    if relevant_ratio > WARN_RELEVANT_RATIO_HIGH:
+        warnings.append(
+            'The ratio of relevant pages is very high: {:.0%}, '
+            'consider finding and labeling more irrelevant pages to improve '
+            'classifier performance.'
+        )
+    if relevant_ratio < WARN_RELEVANT_RATIO_LOW:
+        warnings.append(
+            'The ratio of relevant pages is very low, just {:.0%}, '
+            'consider finding and labeling more relevant pages to improve '
+            'classifier performance.'
+        )
+    roc_aucs = metrics.get('ROC AUC')
+    if roc_aucs:
+        roc_auc = np.mean(roc_aucs)
+        if roc_auc < WARN_ROC_AUC:
+            warnings.append(
+                'The quality of classifier is {quality}, ROC AUC is just '
+                '{roc_auc:.2f}. Consider {advice}.'
+                .format(
+                    quality=('very bad' if roc_auc < DANGER_ROC_AUC else
+                             'not very good'),
+                    roc_auc=roc_auc,
+                    advice=('fixing warnings shown above' if warnings else
+                            'labeling more pages, or re-labeling them using '
+                            'different criteria'),
+                )
+            )
+    meta.extend(('Warning', w) for w in warnings)
+
     meta.append((
         'Dataset',
-        '{n_docs} documents, {labeled_ratio:.0%} with labels '
+        '{n_docs} documents, {n_labeled} with labels ({labeled_ratio:.0%}) '
         'across {n_domains} domain{s}.'.format(
-            n_docs=len(docs),
-            labeled_ratio=len(with_labels) / len(docs),
+            n_docs=n_docs,
+            n_labeled=n_labeled,
+            labeled_ratio=n_labeled / n_docs,
             n_domains=n_domains,
             s='s' if n_domains > 1 else '',
         )))
-    relevant = [doc for doc in docs if doc['relevant']]
-    relevant_ratio = len(relevant) / len(with_labels)
     meta.append(('Class balance',
                  '{:.0%} relevant, {:.0%} not relevant.'
                  .format(relevant_ratio, 1. - relevant_ratio)))
@@ -176,12 +219,13 @@ def describe_model(
         meta.extend(
             (k, '{:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v)))
             for k, v in sorted(metrics.items()))
+
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=10)
     feature_weights = weights_explanation['classes'][0]['feature_weights']
     meta.extend(features_descr(feature_weights, 'pos', 'Positive'))
     meta.extend(features_descr(feature_weights, 'neg', 'Negative'))
-    # TODO - some advice: are metrics good or bad, how is the class balance
+
     return meta
 
 

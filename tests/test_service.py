@@ -62,11 +62,16 @@ def test_training():
         train_response = next(consumer).value
         model = decode_model(train_response.pop('model'))  # type: Pipeline
         pprint(train_response)
+        pprint(json.loads(train_response['quality']))
 
         assert train_response == {
             'id': request['id'],
             'quality': json.dumps([
-                ('Dataset', '10 documents, 100% with labels across 10 domains.'),
+                ('Warning',
+                 'Number of labeled documents is just 10, consider having at least 100 '
+                 'labeled.'),
+                ('Dataset',
+                 '10 documents, 10 with labels (100%) across 10 domains.'),
                 ('Class balance', '30% relevant, 70% not relevant.'),
                 ('Metrics', ''),
                 ('Accuracy', '1.000 ± 0.000'),

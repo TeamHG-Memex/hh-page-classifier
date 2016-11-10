@@ -9,10 +9,10 @@ setup(
     install_requires=[
         'eli5',
         'html-text',
-        'kafka-python',
+        'kafka-python==1.3.1',
         'numpy',
-        'scikit-learn',
-        'scipy',
+        'scikit-learn==0.18',
+        'scipy==0.18.1',
         'tldextract',
     ],
     entry_points = {
