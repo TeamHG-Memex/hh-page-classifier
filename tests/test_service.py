@@ -9,8 +9,7 @@ from html_text import extract_text
 from kafka import KafkaConsumer, KafkaProducer
 from sklearn.pipeline import Pipeline
 
-from hh_page_clf.service import Service, encode_message, \
-    encode_model, decode_model
+from hh_page_clf.service import Service, encode_model, decode_model
 from hh_page_clf.utils import configure_logging
 from .test_train import fit_clf
 
@@ -31,13 +30,21 @@ def clear_topics():
         consumer.commit()
 
 
+def encode_message(message: Dict) -> bytes:
+    try:
+        return json.dumps(message).encode('utf8')
+    except Exception as e:
+        logging.error('Error serializing message', exc_info=e)
+        raise
+
+
 def test_training():
     clear_topics()
     producer = KafkaProducer(value_serializer=encode_message)
     consumer = KafkaConsumer(
         ATestService.output_topic,
         value_deserializer=decode_message)
-    service = ATestService(fit_clf=fit_clf)
+    service = ATestService(fit_clf=fit_clf, debug=True)
     service_thread = threading.Thread(target=service.run)
     service_thread.start()
     train_request = {
@@ -82,35 +89,36 @@ def test_training():
         assert pred_proba(page_pos) > 0.5
         assert pred_proba(page_neg) < 0.5
 
-    request_1 = dict(train_request, id='some id 1')
-    request_2 = dict(train_request, id='some id 2')
-    producer.send(ATestService.input_topic, request_1)
-    producer.send(ATestService.input_topic, request_1)
-    producer.send(ATestService.input_topic, request_2)
-    producer.flush()
-    _test(request_1)
-    _test(request_2)
-    producer.send(ATestService.input_topic, request_1)
-    producer.flush()
-    producer.send(ATestService.input_topic, request_1)
-    producer.send(ATestService.input_topic, {'junk': True})
-    producer.send(ATestService.input_topic, request_2)
-    producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
-    producer.flush()
-    _test(request_1)
-    _test(request_2)
-    error_response = next(consumer).value
-    assert error_response == {
-        'id': '3',
-        'quality': json.dumps([
-            ('Unknown error while training a model',
-             "'bool' object has no attribute 'get'")]),
-        'model': None,
-    }
-
-    producer.send(ATestService.input_topic, {'from-tests': 'stop'})
-    producer.flush()
-    service_thread.join()
+    try:
+        request_1 = dict(train_request, id='some id 1')
+        request_2 = dict(train_request, id='some id 2')
+        producer.send(ATestService.input_topic, request_1)
+        producer.send(ATestService.input_topic, request_1)
+        producer.send(ATestService.input_topic, request_2)
+        producer.flush()
+        _test(request_1)
+        _test(request_2)
+        producer.send(ATestService.input_topic, request_1)
+        producer.flush()
+        producer.send(ATestService.input_topic, request_1)
+        producer.send(ATestService.input_topic, {'junk': True})
+        producer.send(ATestService.input_topic, request_2)
+        producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
+        producer.flush()
+        _test(request_1)
+        _test(request_2)
+        error_response = next(consumer).value
+        assert error_response == {
+            'id': '3',
+            'quality': json.dumps([
+                ('Unknown error while training a model',
+                 "'bool' object has no attribute 'get'")]),
+            'model': None,
+        }
+    finally:
+        producer.send(ATestService.input_topic, {'from-tests': 'stop'})
+        producer.flush()
+        service_thread.join()
 
 
 Point = namedtuple('Point', 'x, y')

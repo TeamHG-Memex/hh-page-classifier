@@ -1,5 +1,6 @@
 import argparse
 import base64
+import hashlib
 import logging
 import json
 import pickle
@@ -19,7 +20,7 @@ class Service:
     output_topic = 'dd-modeler-output'
     max_message_size = 104857600
 
-    def __init__(self, kafka_host=None, fit_clf=None):
+    def __init__(self, kafka_host=None, fit_clf=None, debug=False):
         self.fit_clf = fit_clf
         kafka_kwargs = {}
         if kafka_host is not None:
@@ -30,9 +31,9 @@ class Service:
             consumer_timeout_ms=10,
             **kafka_kwargs)
         self.producer = KafkaProducer(
-            value_serializer=encode_message,
             max_request_size=self.max_message_size,
             **kafka_kwargs)
+        self.debug = debug
         self.stop_marker = object()
 
     def run(self) -> None:
@@ -67,6 +68,7 @@ class Service:
                                                   key=lambda x: order[x[0]])]
 
     def extract_value(self, message):
+        self._debug_save_message(message.value, 'incoming')
         try:
             value = json.loads(message.value.decode('utf8'))
         except Exception as e:
@@ -112,19 +114,21 @@ class Service:
             }
 
     def send_result(self, result: Dict) -> None:
+        message = json.dumps(result).encode('utf8')
+        self._debug_save_message(message, 'outgoing')
         logging.info('Sending result for id "{}", model size {:,} bytes'
                      .format(result.get('id'),
                              len(result.get('model') or '')))
-        self.producer.send(self.output_topic, result)
+        self.producer.send(self.output_topic, message)
         self.producer.flush()
 
-
-def encode_message(message: Dict) -> bytes:
-    try:
-        return json.dumps(message).encode('utf8')
-    except Exception as e:
-        logging.error('Error serializing message', exc_info=e)
-        raise
+    def _debug_save_message(self, message: bytes, kind: str) -> None:
+        if self.debug:
+            filename = ('hh-page-clf-{}.json'
+                        .format(hashlib.md5(message).hexdigest()))
+            logging.info('Saving {} message to {}'.format(kind, filename))
+            with open(filename, 'wb') as f:
+                f.write(message)
 
 
 def encode_model(model: object) -> Optional[str]:
@@ -145,9 +149,10 @@ def main():
     parser = argparse.ArgumentParser()
     arg = parser.add_argument
     arg('--kafka-host')
+    arg('--debug', action='store_true')
     args = parser.parse_args()
 
     configure_logging()
-    service = Service(kafka_host=args.kafka_host)
+    service = Service(kafka_host=args.kafka_host, debug=args.debug)
     logging.info('Starting hh page classifier service')
     service.run()
