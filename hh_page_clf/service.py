@@ -1,5 +1,6 @@
 import argparse
 import base64
+import gzip
 import hashlib
 import logging
 import json
@@ -124,10 +125,10 @@ class Service:
 
     def _debug_save_message(self, message: bytes, kind: str) -> None:
         if self.debug:
-            filename = ('hh-page-clf-{}.json'
+            filename = ('hh-page-clf-{}.json.gz'
                         .format(hashlib.md5(message).hexdigest()))
             logging.info('Saving {} message to {}'.format(kind, filename))
-            with open(filename, 'wb') as f:
+            with gzip.open(filename, 'wb') as f:
                 f.write(message)
 
 

@@ -249,6 +249,7 @@ def get_domain(url: str) -> str:
 
 def main():
     import argparse
+    import gzip
     import json
     import time
     from .utils import configure_logging
@@ -258,7 +259,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('message_filename')
     args = parser.parse_args()
-    with open(args.message_filename) as f:
+    opener = gzip.open if args.message_filename.endswith('.gz') else open
+    with opener(args.message_filename, 'rt') as f:
         logging.info('Decoding message')
         message = json.load(f)
     logging.info('Done, starting train_model')

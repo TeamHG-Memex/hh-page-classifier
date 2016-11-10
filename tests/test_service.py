@@ -44,7 +44,7 @@ def test_training():
     consumer = KafkaConsumer(
         ATestService.output_topic,
         value_deserializer=decode_message)
-    service = ATestService(fit_clf=fit_clf, debug=True)
+    service = ATestService(fit_clf=fit_clf, debug=False)
     service_thread = threading.Thread(target=service.run)
     service_thread.start()
     train_request = {
