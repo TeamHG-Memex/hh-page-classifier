@@ -3,11 +3,12 @@ from functools import partial
 import logging
 import multiprocessing
 from pprint import pformat
-from typing import Any, List, Dict, Tuple
+from typing import List, Dict
 
 import attr
-from eli5.base import Explanation
+from eli5.base import FeatureWeights
 from eli5.sklearn.explain_weights import explain_weights
+from eli5.formatters.html import _weight_color, _weight_range
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
@@ -22,16 +23,24 @@ ERROR = 'Error'
 WARNING = 'Warning'
 NOTICE = 'Notice'
 
-MetaItem = Tuple[str, str]
+@attr.s
+class AdviceItem:
+    kind = attr.ib()
+    text = attr.ib()
+
+
+@attr.s
+class DescriptionItem:
+    heading = attr.ib()
+    text = attr.ib()
+
 
 @attr.s
 class Meta:
-    advice = attr.ib()  # type: List[MetaItem]
-    description = attr.ib(default=None)  # type: List[MetaItem]
-    weights_explanation = attr.ib(default=None)  # type: Explanation
-
-    def asdict(self):
-        return attr.asdict(self, retain_collection_types=False)
+    advice = attr.ib()  # type: List[AdviceItem]
+    description = attr.ib(default=None)  # type: List[DescriptionItem]
+    weights = attr.ib(default=None)  # type: FeatureWeights
+    tooltips = attr.ib(default=None)  # type: Dict[str, str]
 
 
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
@@ -47,14 +56,14 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     if not docs:
         return ModelMeta(
             model=None,
-            meta=Meta(
-                [(ERROR, 'Can not train a model: no pages given.')]))
+            meta=Meta([AdviceItem(
+                ERROR, 'Can not train a model: no pages given.')]))
     with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
     if not with_labels:
         return ModelMeta(
             model=None,
-            meta=Meta(
-                [(ERROR, 'Can not train a model, no labeled pages given.')]))
+            meta=Meta([AdviceItem(
+                ERROR, 'Can not train a model, no labeled pages given.')]))
 
     all_ys = np.array([doc['relevant'] for doc in with_labels])
     classes = np.unique(all_ys)
@@ -64,11 +73,12 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
         return ModelMeta(
             model=None,
             meta=Meta(
-                [(ERROR,
-                  'Can not train a model, only {} pages in sample: '
-                  'need examples of {} pages too.'.format(
-                      class_names[only_cls], class_names[not only_cls])),
-                 ]))
+                [AdviceItem(
+                    ERROR,
+                    'Can not train a model, only {} pages in sample: '
+                    'need examples of {} pages too.'.format(
+                        class_names[only_cls], class_names[not only_cls])),
+                ]))
 
     logging.info('Extracting text')
     with multiprocessing.Pool() as pool:
@@ -83,7 +93,7 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     n_folds = 4
     advice = []
     if n_domains == 1:
-        advice.append((
+        advice.append(AdviceItem(
             WARNING,
             'Only 1 domain in data means that it\'s impossible to do '
             'cross-validation across domains, '
@@ -93,7 +103,7 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
     else:
         folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
         if n_domains < n_folds:
-            advice.append((
+            advice.append(AdviceItem(
                 WARNING,
                 'Low number of domains (just {}) '
                 'might result in model over-fitting.'.format(n_domains)
@@ -109,7 +119,7 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                 for k, v in _metrics.items():
                     metrics[k].append(v)
         else:
-            advice.append((
+            advice.append(AdviceItem(
                 WARNING,
                 'Can not do cross-validation, as there are no folds where '
                 'training data has both relevant and non-relevant examples. '
@@ -168,6 +178,10 @@ def flt_list(lst: List, indices: np.ndarray) -> List:
     return [x for i, x in enumerate(lst) if i in indices]
 
 
+def get_domain(url: str) -> str:
+    return tldextract.extract(url).registered_domain.lower()
+
+
 WARN_N_LABELED = 100
 WARN_RELEVANT_RATIO_HIGH = 0.75
 WARN_RELEVANT_RATIO_LOW = 0.05
@@ -179,7 +193,7 @@ DANGER_ROC_AUC = 0.65
 def get_meta(
         clf: Pipeline,
         metrics: Dict[str, List[float]],
-        advice: List[MetaItem],
+        advice: List[AdviceItem],
         docs: List[Dict],
         with_labels: List[Dict],
         n_domains: int,
@@ -194,21 +208,21 @@ def get_meta(
     relevant_ratio = len(relevant) / n_labeled
 
     if n_labeled < WARN_N_LABELED:
-        advice.append((
+        advice.append(AdviceItem(
             WARNING,
             'Number of labeled documents is just {n_labeled}, '
             'consider having at least {min_labeled} labeled.'
             .format(n_labeled=n_labeled, min_labeled=WARN_N_LABELED)
         ))
     if relevant_ratio > WARN_RELEVANT_RATIO_HIGH:
-        advice.append((
+        advice.append(AdviceItem(
             WARNING,
             'The ratio of relevant pages is very high: {:.0%}, '
             'consider finding and labeling more irrelevant pages to improve '
             'classifier performance.'
         ))
     if relevant_ratio < WARN_RELEVANT_RATIO_LOW:
-        advice.append((
+        advice.append(AdviceItem(
             WARNING,
             'The ratio of relevant pages is very low, just {:.0%}, '
             'consider finding and labeling more relevant pages to improve '
@@ -218,7 +232,7 @@ def get_meta(
     if roc_aucs:
         roc_auc = np.mean(roc_aucs)
         if roc_auc < WARN_ROC_AUC:
-            advice.append((
+            advice.append(AdviceItem(
                 WARNING,
                 'The quality of the classifier is {quality}, ROC AUC is just '
                 '{roc_auc:.2f}. Consider {advice}.'
@@ -232,7 +246,7 @@ def get_meta(
                 )
             ))
         else:
-            advice.append((
+            advice.append(AdviceItem(
                 NOTICE,
                 'The quality of the classifier is {quality}, ROC AUC is '
                 '{roc_auc:.2f}. {advice}.'
@@ -248,7 +262,7 @@ def get_meta(
                 )
             ))
 
-    description.append((
+    description.append(DescriptionItem(
         'Dataset',
         '{n_docs} documents, {n_labeled} with labels ({labeled_ratio:.0%}) '
         'across {n_domains} domain{s}.'.format(
@@ -258,28 +272,62 @@ def get_meta(
             n_domains=n_domains,
             s='s' if n_domains > 1 else '',
         )))
-    description.append((
+    description.append(DescriptionItem(
         'Class balance',
         '{:.0%} relevant, {:.0%} not relevant.'
         .format(relevant_ratio, 1. - relevant_ratio)))
     if metrics:
-        description.append(('Metrics', ''))
+        description.append(DescriptionItem('Metrics', ''))
         description.extend(
-            (k, '{:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v)))
+            DescriptionItem(
+                k, '{:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v)))
             for k, v in sorted(metrics.items()))
-
-    weights_explanation = explain_weights(
-        clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
 
     return Meta(
         advice=advice,
         description=description,
-        weights_explanation=weights_explanation,
+        weights=get_eli5_weights(clf),
+        tooltips=TOOLTIPS,
     )
 
 
-def get_domain(url: str) -> str:
-    return tldextract.extract(url).registered_domain.lower()
+def get_eli5_weights(clf):
+    """ Transform tuples of (name, weight) to dicts with color info.
+    """
+    weights_explanation = explain_weights(
+        clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
+    weights = weights_explanation.targets[0].feature_weights
+    # TODO - move it to eli5?
+    weight_range = _weight_range(weights)
+    for w_lst in [weights.pos, weights.neg]:
+        w_lst[:] = [{
+            'feature': name,
+            'weight': weight,
+            'hsl_color': _weight_color(weight, weight_range),
+        } for name, weight in w_lst]
+    return weights
+
+
+TOOLTIPS = {
+    'ROC AUC': (
+        'Area under ROC (receiver operating characteristic) curve '
+        'shows how good is the classifier at telling relevant pages from '
+        'non-relevant at different thresholds. '
+        'Random classifier has ROC&nbsp;AUC&nbsp;=&nbsp;0.5, '
+        'and a perfect classifier has ROC&nbsp;AUC&nbsp;=&nbsp;1.0.'
+    ),
+    'Accuracy': (
+        'Accuracy is the ratio of pages classified correctly as '
+        'relevant or not relevant. This metric is easy to interpret but '
+        'not very good for unbalanced datasets.'
+    ),
+    'F1': (
+        'F1 score is a combination of recall and precision for detecting '
+        'relevant pages. It shows how good is a classifier at detecting '
+        'relevant pages at default threshold.'
+        'Worst value is 0.0 and perfect value is 1.0.'
+    ),
+}
 
 
 def main():

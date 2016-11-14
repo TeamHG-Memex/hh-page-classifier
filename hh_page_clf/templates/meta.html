@@ -3,9 +3,9 @@
 {% block content %}
 
 
-    {% for heading, text in meta.advice %}
-        <div class="alert {{ heading|alert_class }}" role="alert">
-            <b>{{ heading|add_tooltips }}!</b> {{ text|add_tooltips }}
+    {% for item in meta.advice %}
+        <div class="alert {{ item.kind|alert_class }}" role="alert">
+            <b>{{ item.kind|add_tooltips }}!</b> {{ item.text|add_tooltips }}
         </div>
     {% endfor %}
 
@@ -21,13 +21,13 @@
     <div id="clf-more-info" class="collapse">
 
         <dl class="dl-horizontal">
-            {% for heading, text in meta.description %}
-                <dt>{{ heading|add_tooltips }}</dt>
-                <dd>{{ text|add_tooltips }}</dd>
+            {% for item in meta.description %}
+                <dt>{{ item.heading|add_tooltips }}</dt>
+                <dd>{{ item.text|add_tooltips }}</dd>
             {% endfor %}
         </dl>
 
-        {% if weights %}
+        {% if meta.weights %}
 
             <button class="btn btn-info"
                role="button"
@@ -39,7 +39,34 @@
             </button>
 
             <div id="clf-weights" class="collapse weights">
-                {{ weights }}
+                <table class="table">
+                    {% for item in meta.weights.pos %}
+                        <tr style="background-color: {{ item.hsl_color }}">
+                            <td>{{ item.weight|round(3) }}</td>
+                            <td>{{ item.feature }}</td>
+                        </tr>
+                    {% endfor %}
+                    {%  if meta.weights.pos_remaining %}
+                        <tr>
+                            <td colspan="2">
+                                &hellip; {{ meta.weights.pos_remaining }} more positive &hellip;
+                            </td>
+                        </tr>
+                    {% endif %}
+                    {%  if meta.weights.neg_remaining %}
+                        <tr>
+                            <td colspan="2">
+                                &hellip; {{ meta.weights.neg_remaining }} more negative &hellip;
+                            </td>
+                        </tr>
+                    {% endif %}
+                    {% for item in meta.weights.neg|reverse %}
+                        <tr style="background-color: {{ item.hsl_color }}">
+                            <td>{{ item.weight|round(3) }}</td>
+                            <td>{{ item.feature }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
             </div>
         {% endif %}
 

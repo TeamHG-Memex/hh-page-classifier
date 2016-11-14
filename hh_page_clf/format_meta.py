@@ -1,9 +1,10 @@
-import re
-
-from eli5.formatters import format_as_html, fields
 from jinja2 import Environment, PackageLoader
 
-from .train import Meta, ERROR, WARNING, NOTICE
+from .train import Meta, ERROR, WARNING, NOTICE, TOOLTIPS
+
+
+# This is all just for testing, will be removed.
+# Real html formatting is done in the THH.
 
 
 template_env = Environment(
@@ -16,36 +17,8 @@ template_env.filters.update(dict(
 
 
 def format_meta(meta: Meta) -> str:
-    """ Format meta as html (to be moved to THH).
-    """
     template = template_env.get_template('meta.html')
-    weights = None
-    if meta.weights_explanation:
-        weights = format_as_html(meta.weights_explanation, show=fields.WEIGHTS)
-        weights = re.sub('<p>.*</p>', '', weights, flags=re.S)  # FIXME
-    return template.render(meta=meta, weights=weights)
-
-
-TOOLTIPS = {
-    'ROC AUC': (
-        'Area under ROC (receiver operating characteristic) curve '
-        'shows how good is the classifier at telling relevant pages from '
-        'non-relevant at different thresholds. '
-        'Random classifier has ROC&nbsp;AUC&nbsp;=&nbsp;0.5, '
-        'and a perfect classifier has ROC&nbsp;AUC&nbsp;=&nbsp;1.0.'
-    ),
-    'Accuracy': (
-        'Accuracy is the ratio of pages classified correctly as '
-        'relevant or not relevant. This metric is easy to interpret but '
-        'not very good for unbalanced datasets.'
-    ),
-    'F1': (
-        'F1 score is a combination of recall and precision for detecting '
-        'relevant pages. It shows how good is a classifier at detecting '
-        'relevant pages at default threshold.'
-        'Worst value is 0.0 and perfect value is 1.0.'
-    ),
-}
+    return template.render(meta=meta)
 
 
 def _add_tooltips(text: str) -> str:

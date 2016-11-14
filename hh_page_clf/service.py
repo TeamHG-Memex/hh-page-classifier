@@ -9,10 +9,10 @@ from pprint import pformat
 from typing import Dict, List, Tuple, Optional
 import zlib
 
+import attr
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
 
-from .format_meta import format_meta
 from .train import train_model
 from .utils import configure_logging
 
@@ -111,7 +111,7 @@ class Service:
         else:
             return {
                 'id': request['id'],
-                'quality': format_meta(result.meta),
+                'quality': attr.asdict(result.meta),
                 'model': encode_model(result.model),
             }
 
