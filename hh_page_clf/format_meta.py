@@ -1,3 +1,5 @@
+import re
+
 from eli5.formatters import format_as_html, fields
 from jinja2 import Environment, PackageLoader
 
@@ -17,11 +19,11 @@ def format_meta(meta: Meta) -> str:
     """ Format meta as html (to be moved to THH).
     """
     template = template_env.get_template('meta.html')
-    return template.render(
-        meta=meta,
-        weights=format_as_html(meta.weights_explanation, show=fields.WEIGHTS)
-        if meta.weights_explanation else None,
-    )
+    weights = None
+    if meta.weights_explanation:
+        weights = format_as_html(meta.weights_explanation, show=fields.WEIGHTS)
+        weights = re.sub('<p>.*</p>', '', weights, flags=re.S)  # FIXME
+    return template.render(meta=meta, weights=weights)
 
 
 TOOLTIPS = {
