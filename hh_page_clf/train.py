@@ -6,6 +6,7 @@ from pprint import pformat
 from typing import Any, List, Dict, Tuple
 
 import attr
+from eli5.base import Explanation
 from eli5.sklearn.explain_weights import explain_weights
 import html_text
 import numpy as np
@@ -27,6 +28,7 @@ MetaItem = Tuple[str, str]
 class Meta:
     advice = attr.ib()  # type: List[MetaItem]
     description = attr.ib(default=None)  # type: List[MetaItem]
+    weights_explanation = attr.ib(default=None)  # type: Explanation
 
     def asdict(self):
         return attr.asdict(self, retain_collection_types=False)
@@ -218,7 +220,7 @@ def get_meta(
         if roc_auc < WARN_ROC_AUC:
             advice.append((
                 WARNING,
-                'The quality of classifier is {quality}, ROC AUC is just '
+                'The quality of the classifier is {quality}, ROC AUC is just '
                 '{roc_auc:.2f}. Consider {advice}.'
                 .format(
                     quality=('very bad' if roc_auc < DANGER_ROC_AUC else
@@ -232,7 +234,7 @@ def get_meta(
         else:
             advice.append((
                 NOTICE,
-                'The quality of classifier is {quality}, ROC AUC is '
+                'The quality of the classifier is {quality}, ROC AUC is '
                 '{roc_auc:.2f}. {advice}.'
                 .format(
                     quality=('very good' if roc_auc > GOOD_ROC_AUC else
@@ -268,24 +270,12 @@ def get_meta(
 
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
-    fw = weights_explanation.targets[0].feature_weights
-    description.extend(features_descr(fw.pos, fw.pos_remaining, 'Positive'))
-    description.extend(features_descr(fw.neg, fw.neg_remaining, 'Negative'))
 
-    return Meta(advice=advice, description=description)
-
-
-def features_descr(features: List[Tuple[str, float]],
-                   remaining_features: int, group_name: str) -> List[MetaItem]:
-    description = []
-    if features or remaining_features:
-        description.append(('{} features'.format(group_name), ''))
-        description.extend((str(feature), '{:.2f}'.format(weight))
-                           for feature, weight in features)
-        if remaining_features:
-            description.append(('Other {} features'.format(group_name.lower()),
-                                str(remaining_features)))
-    return description
+    return Meta(
+        advice=advice,
+        description=description,
+        weights_explanation=weights_explanation,
+    )
 
 
 def get_domain(url: str) -> str:

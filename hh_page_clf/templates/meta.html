@@ -1,0 +1,15 @@
+<ul>
+    {% for heading, text in meta.advice %}
+        <li><b>{{ heading }}:</b> {{ text }}</li>
+    {% endfor %}
+</ul>
+
+<ul>
+    {% for heading, text in meta.description %}
+        <li><b>{{ heading }}:</b> {{ text }}</li>
+    {% endfor %}
+</ul>
+
+{% if weights %}
+    {{ weights }}
+{% endif %}
