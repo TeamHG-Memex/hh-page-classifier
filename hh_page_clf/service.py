@@ -12,6 +12,7 @@ import zlib
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
 
+from .format_meta import format_meta
 from .train import train_model
 from .utils import configure_logging
 
@@ -110,7 +111,7 @@ class Service:
         else:
             return {
                 'id': request['id'],
-                'quality': json.dumps(result.meta),
+                'quality': format_meta(result.meta),
                 'model': encode_model(result.model),
             }
 
