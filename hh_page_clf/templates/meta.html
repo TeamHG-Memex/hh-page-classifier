@@ -1,15 +1,48 @@
-<ul>
+{% extends "base.html" %}
+
+{% block content %}
+
+
     {% for heading, text in meta.advice %}
-        <li><b>{{ heading }}:</b> {{ text }}</li>
+        <div class="alert {{ heading|alert_class }}" role="alert">
+            <b>{{ heading|add_tooltips }}!</b> {{ text|add_tooltips }}
+        </div>
     {% endfor %}
-</ul>
 
-<ul>
-    {% for heading, text in meta.description %}
-        <li><b>{{ heading }}:</b> {{ text }}</li>
-    {% endfor %}
-</ul>
+    <button class="btn btn-info"
+       role="button"
+       data-toggle="collapse"
+       href="#clf-more-info"
+       aria-expanded="false"
+       aria-controls="clf-more-info">
+        More &hellip;
+    </button>
 
-{% if weights %}
-    {{ weights }}
-{% endif %}
+    <div id="clf-more-info" class="collapse">
+
+        <dl class="dl-horizontal">
+            {% for heading, text in meta.description %}
+                <dt>{{ heading|add_tooltips }}</dt>
+                <dd>{{ text|add_tooltips }}</dd>
+            {% endfor %}
+        </dl>
+
+        {% if weights %}
+
+            <button class="btn btn-info"
+               role="button"
+               data-toggle="collapse"
+               href="#clf-weights"
+               aria-expanded="false"
+               aria-controls="clf-weights">
+                Feature weights
+            </button>
+
+            <div id="clf-weights" class="collapse weights">
+                {{ weights }}
+            </div>
+        {% endif %}
+
+    </div>
+
+{% endblock %}
