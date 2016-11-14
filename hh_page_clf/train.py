@@ -23,6 +23,7 @@ ERROR = 'Error'
 WARNING = 'Warning'
 NOTICE = 'Notice'
 
+
 @attr.s
 class AdviceItem:
     kind = attr.ib()
@@ -297,7 +298,7 @@ def get_eli5_weights(clf):
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
     weights = weights_explanation.targets[0].feature_weights
-    # TODO - move it to eli5?
+    # TODO - make this methods public in eli5
     weight_range = _weight_range(weights)
     for w_lst in [weights.pos, weights.neg]:
         w_lst[:] = [{
@@ -305,6 +306,11 @@ def get_eli5_weights(clf):
             'weight': weight,
             'hsl_color': _weight_color(weight, weight_range),
         } for name, weight in w_lst]
+    # TODO - fix in eli5
+    if weights.pos_remaining is not None:
+        weights.pos_remaining = int(weights.pos_remaining)
+    if weights.neg_remaining is not None:
+        weights.neg_remaining = int(weights.neg_remaining)
     return weights
 
 
@@ -351,3 +357,5 @@ def main():
     result = train_model(message['pages'])
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info('Model size: {:,} bytes'.format(len(encode_model(result.model))))
+    print(json.dumps(
+        attr.asdict(result.meta), sort_keys=True, ensure_ascii=False, indent=True))

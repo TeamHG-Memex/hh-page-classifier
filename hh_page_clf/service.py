@@ -13,7 +13,7 @@ import attr
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
 
-from .train import train_model
+from .train import train_model, AdviceItem, ERROR, Meta, ModelMeta
 from .utils import configure_logging
 
 
@@ -95,25 +95,24 @@ class Service:
         else:
             logging.error(
                 'Dropping a message without "pages" or "id" key: {}'
-                    .format(pformat(value)))
+                .format(pformat(value)))
 
     def train_model(self, request: Dict) -> Dict:
         try:
             result = train_model(request['pages'], fit_clf=self.fit_clf)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
-            return {
-                'id': request['id'],
-                'quality': json.dumps([
-                    ('Unknown error while training a model', str(e))]),
-                'model': None,
-            }
-        else:
-            return {
-                'id': request['id'],
-                'quality': attr.asdict(result.meta),
-                'model': encode_model(result.model),
-            }
+            result = ModelMeta(
+                model=None,
+                meta=Meta(advice=[AdviceItem(
+                    ERROR,
+                    'Unknown error while training a model: {}'.format(e))]))
+        return {
+            'id': request['id'],
+            'quality': json.dumps(attr.asdict(result.meta)),
+            'model': (encode_model(result.model) if result.model is not None
+                      else None),
+        }
 
     def send_result(self, result: Dict) -> None:
         message = json.dumps(result).encode('utf8')

@@ -7,7 +7,7 @@ setup(
     packages=['hh_page_clf'],
     include_package_data=True,
     install_requires=[
-        'attr',
+        'attrs',
         'eli5',
         'html-text',
         'kafka-python==1.3.1',
