@@ -7,8 +7,9 @@ from typing import List, Dict
 
 import attr
 from eli5.base import FeatureWeights
+from eli5.base_utils import numpy_to_python
 from eli5.sklearn.explain_weights import explain_weights
-from eli5.formatters.html import _weight_color, _weight_range
+from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
@@ -293,25 +294,19 @@ def get_meta(
 
 
 def get_eli5_weights(clf):
-    """ Transform tuples of (name, weight) to dicts with color info.
+    """ Return eli5 feature weights (as a dict) with added color info.
     """
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
     weights = weights_explanation.targets[0].feature_weights
-    # TODO - make this methods public in eli5
-    weight_range = _weight_range(weights)
+    weight_range = get_weight_range(weights)
     for w_lst in [weights.pos, weights.neg]:
         w_lst[:] = [{
-            'feature': name,
-            'weight': weight,
-            'hsl_color': _weight_color(weight, weight_range),
-        } for name, weight in w_lst]
-    # TODO - fix in eli5
-    if weights.pos_remaining is not None:
-        weights.pos_remaining = int(weights.pos_remaining)
-    if weights.neg_remaining is not None:
-        weights.neg_remaining = int(weights.neg_remaining)
-    return weights
+            'feature': fw.feature,
+            'weight': fw.weight,
+            'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
+        } for fw in w_lst]
+    return numpy_to_python(attr.asdict(weights))
 
 
 TOOLTIPS = {
