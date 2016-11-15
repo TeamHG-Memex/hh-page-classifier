@@ -33,8 +33,50 @@ Outgoing message with trained model::
 
     {
       "id": "the same id",
-      "quality": "[[\"Accuracy\", \"0.84\"], [\"some other metric\", \"0.89\"]]",
+      "quality": "{ ... }",
       "model": "b64-encoded page classifier model"
+    }
+
+``quality`` field is a JSON-encoded string. Here is an example::
+
+    {
+     "advice": [
+      {
+       "kind": "Warning",
+       "text": "The quality of the classifier is not very good, ROC AUC is just 0.67. Consider labeling more pages, or re-labeling them using different criteria."
+      }
+     ],
+     "description": [
+      {"heading": "Dataset", "text": "183 documents, 183 with labels (100%) across 129 domains."},
+      {"heading": "Class balance", "text": "40% relevant, 60% not relevant."},
+      {"heading": "Metrics", "text": ""},
+      {"heading": "Accuracy", "text": "0.628 ± 0.087"},
+      {"heading": "F1", "text": "0.435 ± 0.140"},
+      {"heading": "ROC AUC", "text": "0.666 ± 0.127"}
+     ],
+     "tooltips": {
+      "Accuracy": "Accuracy is the ratio of pages classified correctly as relevant or not relevant. This metric is easy to interpret but not very good for unbalanced datasets.",
+      "F1": "F1 score is a combination of recall and precision for detecting relevant pages. It shows how good is a classifier at detecting relevant pages at default threshold.Worst value is 0.0 and perfect value is 1.0.",
+      "ROC AUC": "Area under ROC (receiver operating characteristic) curve shows how good is the classifier at telling relevant pages from non-relevant at different thresholds. Random classifier has ROC&nbsp;AUC&nbsp;=&nbsp;0.5, and a perfect classifier has ROC&nbsp;AUC&nbsp;=&nbsp;1.0."
+     },
+     "weights": {
+      "neg": [
+       {
+        "feature": "<BIAS>",
+        "hsl_color": "hsl(0, 100.00%, 88.77%)",
+        "weight": -1.5918805437501728
+       }
+      ],
+      "neg_remaining": 4006,
+      "pos": [
+       {
+        "feature": "2015",
+        "hsl_color": "hsl(120, 100.00%, 80.00%)",
+        "weight": 3.630274967418529
+       }
+      ],
+      "pos_remaining": 4513
+     }
     }
 
 
