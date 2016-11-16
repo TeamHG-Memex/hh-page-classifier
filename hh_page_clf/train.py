@@ -15,6 +15,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import tldextract
 
+from .utils import decode_object, encode_object
 from .model import BaseModel, DefaultModel
 
 
@@ -153,7 +154,7 @@ def eval_on_fold(fold, model_cls: BaseModel, all_xs, all_ys) -> Dict:
     """
     train_idx, test_idx = fold
     model = fit_model(model_cls, flt_list(all_xs, train_idx), all_ys[train_idx])
-    model = model_cls.decode(model.encode())  # check deserialization
+    model = decode_object(encode_object(model))  # type: BaseModel
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
     pred_ys = model.predict(test_xs)
@@ -355,4 +356,5 @@ def main():
     t0 = time.time()
     result = train_model(message['pages'])
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
-    logging.info('Model size: {:,} bytes'.format(len(result.model.encode())))
+    logging.info(
+        'Model size: {:,} bytes'.format(len(encode_object(result.model))))

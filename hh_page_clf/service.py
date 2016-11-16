@@ -11,7 +11,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.consumer.fetcher import ConsumerRecord
 
 from .train import train_model, AdviceItem, ERROR, Meta, ModelMeta
-from .utils import configure_logging
+from .utils import configure_logging, encode_object
 
 
 class Service:
@@ -107,7 +107,7 @@ class Service:
         return {
             'id': request['id'],
             'quality': json.dumps(attr.asdict(result.meta)),
-            'model': (result.model.encode() if result.model is not None
+            'model': (encode_object(result.model) if result.model is not None
                       else None),
         }
 

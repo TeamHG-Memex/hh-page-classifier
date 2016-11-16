@@ -6,20 +6,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, make_union
 
-from .utils import encode_object, decode_object
-
 
 class BaseModel:
-    @classmethod
-    def decode(cls, data: str) -> 'BaseModel':
-        params = decode_object(data)
-        assert isinstance(params, dict)
-        return cls(**params)
-
-    def encode(self) -> str:
-        return encode_object(self.get_params())
-
     def get_params(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def set_params(self, **params) -> None:
         raise NotImplementedError
 
     def fit(self, xs, yx) -> None:
@@ -34,28 +26,28 @@ class BaseModel:
     def explain_weights(self):
         raise NotImplementedError
 
+    def __getstate__(self):
+        return self.get_params()
+
+    def __setstate__(self, state):
+        self.__init__()
+        self.set_params(**state)
+
 
 class DefaultModel(BaseModel):
-    def __init__(self, text_vec_attrs=None, url_vec_attrs=None, clf_attrs=None):
+    def __init__(self):
         self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
         self.text_vec = TfidfVectorizer(
             preprocessor=self.text_preprocessor,
         )
-        if text_vec_attrs:
-            self.text_vec._tfidf._idf_diag = text_vec_attrs['_idf_diag']
-            self.text_vec.vocabulary_ = text_vec_attrs['vocabulary_']
         self.url_vec = CountVectorizer(
             binary=True,
             analyzer='char',
             ngram_range=(3, 4),
             preprocessor=self.url_preprocessor,
         )
-        if url_vec_attrs:
-            set_attributes(self.url_vec, url_vec_attrs)
         self.vec = make_union(self.text_vec, self.url_vec)
         self.clf = LogisticRegressionCV(random_state=42)
-        if clf_attrs:
-            set_attributes(self.clf, clf_attrs)
         self.pipeline = make_pipeline(self.vec, self.clf)
 
     def text_preprocessor(self, item):
@@ -95,6 +87,12 @@ class DefaultModel(BaseModel):
             'url_vec_attrs': get_attributes(self.url_vec),
             'clf_attrs': get_attributes(self.clf),
         }
+
+    def set_params(self, *, text_vec_attrs, url_vec_attrs, clf_attrs):
+        self.text_vec._tfidf._idf_diag = text_vec_attrs['_idf_diag']
+        self.text_vec.vocabulary_ = text_vec_attrs['vocabulary_']
+        set_attributes(self.url_vec, url_vec_attrs)
+        set_attributes(self.clf, clf_attrs)
 
 
 def get_attributes(obj):
