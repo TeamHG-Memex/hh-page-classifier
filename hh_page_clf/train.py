@@ -9,6 +9,7 @@ import attr
 from eli5.base import FeatureWeights
 from eli5.base_utils import numpy_to_python
 from eli5.sklearn.explain_weights import explain_weights
+from eli5.formatters import format_as_text, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
@@ -129,8 +130,13 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             ))
         clf = clf_future.get()
 
-    meta = get_meta(clf, metrics, advice, docs, with_labels, n_domains)
-    logging.info('Model meta:\n{}'.format(pformat(attr.asdict(meta))))
+    meta = get_meta(clf, metrics, advice, docs, n_labeled, n_domains)
+    meta_repr = []
+    for item in meta.advice:
+        meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
+    for item in meta.description:
+        meta_repr.append('{:<20} {}'.format(item.heading + ':', item.text))
+    logging.info('Model meta:\n{}'.format('\n'.join(meta_repr)))
     return ModelMeta(model=clf, meta=meta)
 
 
@@ -277,6 +283,7 @@ def get_eli5_weights(clf):
     """
     weights_explanation = explain_weights(
         clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
+    logging.info(format_as_text(weights_explanation, show=fields.WEIGHTS))
     weights = weights_explanation.targets[0].feature_weights
     weight_range = get_weight_range(weights)
     for w_lst in [weights.pos, weights.neg]:
@@ -330,6 +337,5 @@ def main():
     t0 = time.time()
     result = train_model(message['pages'])
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
-    logging.info('Model size: {:,} bytes'.format(len(encode_model(result.model))))
-    print(json.dumps(
-        attr.asdict(result.meta), sort_keys=True, ensure_ascii=False, indent=True))
+    logging.info(
+        'Model size: {:,} bytes'.format(len(encode_model(result.model))))
