@@ -1,6 +1,6 @@
 import numpy as np
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import Pipeline, make_union
 
@@ -18,11 +18,21 @@ def default_fit_clf(xs, ys) -> Pipeline:
     feature_selection_clf.fit(transformed, ys)
     abs_coefs = np.abs(feature_selection_clf.coef_[0])
     features = set((abs_coefs > np.mean(abs_coefs)).nonzero()[0])
-    # FIXME - relies on ngram_range=(1, 1) ?
+    # FIXME - relies on ngram_range=(1, 1)
     vocabulary = [w for w, idx in vec.vocabulary_.items() if idx in features]
     clf = Pipeline([
-        ('vec', TfidfVectorizer(vocabulary=vocabulary,
-                                preprocessor=text_preprocessor)),
+        ('vec', make_union(
+            TfidfVectorizer(
+                vocabulary=vocabulary,
+                preprocessor=text_preprocessor,
+            ),
+            CountVectorizer(
+                binary=True,
+                analyzer='char',
+                ngram_range=(3, 4),
+                preprocessor=lambda x: x['url'].lower(),
+            ),
+        )),
         ('clf', LogisticRegressionCV(random_state=42)),
     ])
     clf.fit(xs, ys)
