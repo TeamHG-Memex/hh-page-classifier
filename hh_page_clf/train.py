@@ -1,8 +1,8 @@
 from collections import defaultdict, namedtuple
 from functools import partial
 import logging
-import multiprocessing
-from pprint import pformat
+# import multiprocessing
+import multiprocessing.dummy as multiprocessing  # FIXME
 from typing import List, Dict
 
 import attr
@@ -61,14 +61,14 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             model=None,
             meta=Meta([AdviceItem(
                 ERROR, 'Can not train a model: no pages given.')]))
-    with_labels = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    if not with_labels:
+    all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    if not all_xs:
         return ModelMeta(
             model=None,
             meta=Meta([AdviceItem(
                 ERROR, 'Can not train a model, no labeled pages given.')]))
 
-    all_ys = np.array([doc['relevant'] for doc in with_labels])
+    all_ys = np.array([doc['relevant'] for doc in all_xs])
     classes = np.unique(all_ys)
     if len(classes) == 1:
         only_cls = classes[0]
@@ -85,14 +85,17 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
 
     logging.info('Extracting text')
     with multiprocessing.Pool() as pool:
-        all_xs = pool.map(html_text.extract_text,
-                          [doc['html'] for doc in with_labels],
-                          chunksize=100)
+        for doc, text in zip(
+                all_xs, pool.map(html_text.extract_text,
+                                 [doc['html'] for doc in all_xs],
+                                 chunksize=100)):
+            doc['text'] = text
 
     logging.info('Training and evaluating model')
     metrics = defaultdict(list)
-    domains = [get_domain(doc['url']) for doc in with_labels]
+    domains = [get_domain(doc['url']) for doc in all_xs]
     n_domains = len(set(domains))
+    n_labeled = len(all_xs)
     n_folds = 4
     advice = []
     if n_domains == 1:
@@ -102,7 +105,7 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             'cross-validation across domains, '
             'and might result in model over-fitting.'
         ))
-        folds = KFold(len(all_xs), n_folds=n_folds)
+        folds = KFold(n_labeled, n_folds=n_folds)
     else:
         folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
         if n_domains < n_folds:
@@ -182,7 +185,7 @@ def get_meta(
         metrics: Dict[str, List[float]],
         advice: List[AdviceItem],
         docs: List[Dict],
-        with_labels: List[Dict],
+        n_labeled: int,
         n_domains: int,
         ) -> Meta:
     """ Return advice and a more technical model description.
@@ -190,7 +193,6 @@ def get_meta(
     advice = list(advice)
     description = []
     n_docs = len(docs)
-    n_labeled = len(with_labels)
     relevant = [doc for doc in docs if doc['relevant']]
     relevant_ratio = len(relevant) / n_labeled
 
