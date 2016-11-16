@@ -312,8 +312,8 @@ TOOLTIPS = {
         'Area under ROC (receiver operating characteristic) curve '
         'shows how good is the classifier at telling relevant pages from '
         'non-relevant at different thresholds. '
-        'Random classifier has ROC&nbsp;AUC&nbsp;=&nbsp;0.5, '
-        'and a perfect classifier has ROC&nbsp;AUC&nbsp;=&nbsp;1.0.'
+        'Random classifier has ROC AUC = 0.5, '
+        'and a perfect classifier has ROC AUC = 1.0.'
     ),
     'Accuracy': (
         'Accuracy is the ratio of pages classified correctly as '
