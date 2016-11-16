@@ -130,7 +130,7 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             ))
         clf = clf_future.get()
 
-    meta = get_meta(clf, metrics, advice, docs, n_labeled, n_domains)
+    meta = get_meta(clf, metrics, advice, docs, with_labels, n_domains)
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
@@ -207,6 +207,7 @@ def get_meta(
             'The ratio of relevant pages is very high: {:.0%}, '
             'consider finding and labeling more irrelevant pages to improve '
             'classifier performance.'
+            .format(relevant_ratio)
         ))
     if relevant_ratio < WARN_RELEVANT_RATIO_LOW:
         advice.append(AdviceItem(
@@ -214,11 +215,23 @@ def get_meta(
             'The ratio of relevant pages is very low, just {:.0%}, '
             'consider finding and labeling more relevant pages to improve '
             'classifier performance.'
+            .format(relevant_ratio)
         ))
     roc_aucs = metrics.get('ROC AUC')
     if roc_aucs:
         roc_auc = np.mean(roc_aucs)
-        if roc_auc < WARN_ROC_AUC:
+        fix_advice = (
+            'fixing warnings shown above' if advice else
+            'labeling more pages, or re-labeling them using '
+            'different criteria')
+        if np.isnan(roc_auc):
+            advice.append(AdviceItem(
+                WARNING,
+                'The quality of the classifier is not well defined. '
+                'Consider {advice}.'
+                .format(advice=fix_advice)
+            ))
+        elif roc_auc < WARN_ROC_AUC:
             advice.append(AdviceItem(
                 WARNING,
                 'The quality of the classifier is {quality}, ROC AUC is just '
@@ -227,9 +240,7 @@ def get_meta(
                     quality=('very bad' if roc_auc < DANGER_ROC_AUC else
                              'not very good'),
                     roc_auc=roc_auc,
-                    advice=('fixing warnings shown above' if advice else
-                            'labeling more pages, or re-labeling them using '
-                            'different criteria'),
+                    advice=fix_advice,
                 )
             ))
         else:
@@ -292,6 +303,7 @@ def get_eli5_weights(clf):
             'weight': fw.weight,
             'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
         } for fw in w_lst]
+    weights.neg.reverse()
     return numpy_to_python(attr.asdict(weights))
 
 
