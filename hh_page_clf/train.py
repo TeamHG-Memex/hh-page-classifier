@@ -1,14 +1,11 @@
 from collections import defaultdict, namedtuple
-from functools import partial
 import logging
-# import multiprocessing
-import multiprocessing.dummy as multiprocessing  # FIXME
+import multiprocessing
 from typing import List, Dict
 
 import attr
 from eli5.base import FeatureWeights
 from eli5.base_utils import numpy_to_python
-from eli5.sklearn.explain_weights import explain_weights
 from eli5.formatters import format_as_text, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
@@ -18,7 +15,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import tldextract
 
-from .model import default_fit_clf
+from .model import BaseModel, DefaultModel
 
 
 ERROR = 'Error'
@@ -49,13 +46,13 @@ class Meta:
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
+def train_model(docs: List[Dict], model_cls=None) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
-    fit_clf = fit_clf or default_fit_clf
+    model_cls = model_cls or DefaultModel
     if not docs:
         return ModelMeta(
             model=None,
@@ -92,7 +89,6 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             doc['text'] = text
 
     logging.info('Training and evaluating model')
-    metrics = defaultdict(list)
     domains = [get_domain(doc['url']) for doc in all_xs]
     n_domains = len(set(domains))
     n_labeled = len(all_xs)
@@ -116,14 +112,12 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
             ))
     folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
     with multiprocessing.Pool() as pool:
-        clf_future = pool.apply_async(fit_clf, args=(all_xs, all_ys))
+        metric_futures = []
         if folds:
-            for _metrics in pool.imap_unordered(
-                    partial(eval_on_fold,
-                            all_xs=all_xs, all_ys=all_ys, fit_clf=fit_clf),
-                    folds):
-                for k, v in _metrics.items():
-                    metrics[k].append(v)
+            metric_futures = [
+                pool.apply_async(
+                    eval_on_fold, args=(fold, model_cls, all_xs, all_ys))
+                for fold in folds]
         else:
             advice.append(AdviceItem(
                 WARNING,
@@ -131,26 +125,38 @@ def train_model(docs: List[Dict], fit_clf=None) -> ModelMeta:
                 'training data has both relevant and non-relevant examples. '
                 'There are too few domains or the dataset is too unbalanced.'
             ))
-        clf = clf_future.get()
+        model = fit_model(model_cls, all_xs, all_ys)
+        metrics = defaultdict(list)
+        for future in metric_futures:
+            _metrics = future.get()
+            for k, v in _metrics.items():
+                metrics[k].append(v)
 
-    meta = get_meta(clf, metrics, advice, docs, with_labels, n_domains)
+    meta = get_meta(model, metrics, advice, docs, n_labeled, n_domains)
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
     for item in meta.description:
         meta_repr.append('{:<20} {}'.format(item.heading + ':', item.text))
     logging.info('Model meta:\n{}'.format('\n'.join(meta_repr)))
-    return ModelMeta(model=clf, meta=meta)
+    return ModelMeta(model=model, meta=meta)
 
 
-def eval_on_fold(fold, all_xs, all_ys, fit_clf) -> Dict:
+def fit_model(model_cls, xs, ys) -> BaseModel:
+    model = model_cls()
+    model.fit(xs, ys)
+    return model
+
+
+def eval_on_fold(fold, model_cls: BaseModel, all_xs, all_ys) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
-    clf = fit_clf(flt_list(all_xs, train_idx), all_ys[train_idx])
+    model = fit_model(model_cls, flt_list(all_xs, train_idx), all_ys[train_idx])
+    model = model_cls.decode(model.encode())  # check deserialization
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
-    pred_ys_prob = clf.predict_proba(test_xs)[:, 1]
-    pred_ys = clf.predict(test_xs)
+    pred_ys_prob = model.predict_proba(test_xs)[:, 1]
+    pred_ys = model.predict(test_xs)
     try:
         auc = roc_auc_score(test_ys, pred_ys_prob)
     except ValueError:
@@ -181,7 +187,7 @@ DANGER_ROC_AUC = 0.65
 
 
 def get_meta(
-        clf: Pipeline,
+        model: BaseModel,
         metrics: Dict[str, List[float]],
         advice: List[AdviceItem],
         docs: List[Dict],
@@ -286,16 +292,15 @@ def get_meta(
     return Meta(
         advice=advice,
         description=description,
-        weights=get_eli5_weights(clf),
+        weights=get_eli5_weights(model),
         tooltips=TOOLTIPS,
     )
 
 
-def get_eli5_weights(clf):
+def get_eli5_weights(model: BaseModel):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
-    weights_explanation = explain_weights(
-        clf.named_steps['clf'], vec=clf.named_steps['vec'], top=30)
+    weights_explanation = model.explain_weights()
     logging.info(format_as_text(weights_explanation, show=fields.WEIGHTS))
     weights = weights_explanation.targets[0].feature_weights
     weight_range = get_weight_range(weights)
@@ -337,7 +342,6 @@ def main():
     import json
     import time
     from .utils import configure_logging
-    from .service import encode_model
 
     configure_logging()
     parser = argparse.ArgumentParser()
@@ -351,5 +355,4 @@ def main():
     t0 = time.time()
     result = train_model(message['pages'])
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
-    logging.info(
-        'Model size: {:,} bytes'.format(len(encode_model(result.model))))
+    logging.info('Model size: {:,} bytes'.format(len(result.model.encode())))

@@ -1,13 +1,10 @@
 import argparse
-import base64
 import gzip
 import hashlib
 import logging
 import json
-import pickle
 from pprint import pformat
-from typing import Dict, List, Tuple, Optional
-import zlib
+from typing import Dict, List, Tuple
 
 import attr
 from kafka import KafkaConsumer, KafkaProducer
@@ -110,7 +107,7 @@ class Service:
         return {
             'id': request['id'],
             'quality': json.dumps(attr.asdict(result.meta)),
-            'model': (encode_model(result.model) if result.model is not None
+            'model': (result.model.encode() if result.model is not None
                       else None),
         }
 
@@ -130,20 +127,6 @@ class Service:
             logging.info('Saving {} message to {}'.format(kind, filename))
             with gzip.open(filename, 'wb') as f:
                 f.write(message)
-
-
-def encode_model(model: object) -> Optional[str]:
-    if model is not None:
-        return (
-            base64.b64encode(
-                zlib.compress(
-                    pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)))
-            .decode('ascii'))
-
-
-def decode_model(data: Optional[str]) -> object:
-    if data is not None:
-        return pickle.loads(zlib.decompress(base64.b64decode(data)))
 
 
 def main():
