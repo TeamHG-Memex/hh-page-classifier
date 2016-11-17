@@ -19,8 +19,8 @@ class Service:
     output_topic = 'dd-modeler-output'
     max_message_size = 104857600
 
-    def __init__(self, kafka_host=None, fit_clf=None, debug=False):
-        self.fit_clf = fit_clf
+    def __init__(self, kafka_host=None, model_cls=None, debug=False):
+        self.model_cls = model_cls
         kafka_kwargs = {}
         if kafka_host is not None:
             kafka_kwargs['bootstrap_servers'] = kafka_host
@@ -96,7 +96,7 @@ class Service:
 
     def train_model(self, request: Dict) -> Dict:
         try:
-            result = train_model(request['pages'], fit_clf=self.fit_clf)
+            result = train_model(request['pages'], model_cls=self.model_cls)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
             result = ModelMeta(

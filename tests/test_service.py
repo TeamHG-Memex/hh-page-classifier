@@ -7,11 +7,11 @@ from typing import Dict
 
 from html_text import extract_text
 from kafka import KafkaConsumer, KafkaProducer
-from sklearn.pipeline import Pipeline
 
-from hh_page_clf.service import Service, encode_model, decode_model
-from hh_page_clf.utils import configure_logging
-from .test_train import fit_clf
+from hh_page_clf.model import BaseModel
+from hh_page_clf.service import Service
+from hh_page_clf.utils import configure_logging, decode_object, encode_object
+from .test_train import ATestModel
 
 
 configure_logging()
@@ -44,7 +44,7 @@ def test_training():
     consumer = KafkaConsumer(
         ATestService.output_topic,
         value_deserializer=decode_message)
-    service = ATestService(fit_clf=fit_clf, debug=False)
+    service = ATestService(model_cls=ATestModel, debug=False)
     service_thread = threading.Thread(target=service.run)
     service_thread.start()
     train_request = {
@@ -60,37 +60,15 @@ def test_training():
 
     def _test(request):
         train_response = next(consumer).value
-        model = decode_model(train_response.pop('model'))  # type: Pipeline
+        model = decode_object(train_response.pop('model'))  # type: BaseModel
         pprint(train_response)
         pprint(json.loads(train_response['quality']))
 
-        assert train_response == {
-            'id': request['id'],
-            'quality': json.dumps([
-                ('Warning',
-                 'Number of labeled documents is just 10, consider having at least 100 '
-                 'labeled.'),
-                ('Dataset',
-                 '10 documents, 10 with labels (100%) across 10 domains.'),
-                ('Class balance', '30% relevant, 70% not relevant.'),
-                ('Metrics', ''),
-                ('Accuracy', '1.000 ± 0.000'),
-                ('F1', '0.750 ± 0.849'),
-                ('ROC AUC', 'nan ± nan'),
-                ('Positive features', ''),
-                ('number1', '2.16'),
-                ('Negative features', ''),
-                ('number0', '-1.14'),
-                ('number2', '-0.97'),
-                ('<BIAS>', '-0.96'),
-                ('hi', '-0.05'),
-                ('example', '-0.05'),
-            ])
-        }
+        assert train_response['id'] == request['id']
 
         page_neg, page_pos = request['pages'][:2]
         pred_proba = lambda page: \
-            model.predict_proba([extract_text(page['html'])])[0][1]
+            model.predict_proba([{'text': extract_text(page['html'])}])[0][1]
         assert pred_proba(page_pos) > 0.5
         assert pred_proba(page_neg) < 0.5
 
@@ -113,13 +91,9 @@ def test_training():
         _test(request_1)
         _test(request_2)
         error_response = next(consumer).value
-        assert error_response == {
-            'id': '3',
-            'quality': json.dumps([
-                ('Unknown error while training a model',
-                 "'bool' object has no attribute 'get'")]),
-            'model': None,
-        }
+        assert error_response['id'] == '3'
+        assert 'Error' in error_response['quality']
+        assert "'bool' object has no attribute 'get'" in error_response['quality']
     finally:
         producer.send(ATestService.input_topic, {'from-tests': 'stop'})
         producer.flush()
@@ -129,12 +103,12 @@ def test_training():
 Point = namedtuple('Point', 'x, y')
 
 
-def test_encode_model():
+def test_encode_object():
     p = Point(-1, 2.25)
-    assert isinstance(encode_model(p), str)
-    assert p == decode_model(encode_model(p))
-    assert decode_model(None) is None
-    assert encode_model(None) is None
+    assert isinstance(encode_object(p), str)
+    assert p == decode_object(encode_object(p))
+    assert decode_object(None) is None
+    assert encode_object(None) is None
 
 
 def decode_message(message: bytes) -> Dict:

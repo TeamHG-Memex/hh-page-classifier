@@ -12,11 +12,12 @@ def configure_logging():
 
 
 def encode_object(model: object) -> str:
-    return (
-        base64.b64encode(
-            zlib.compress(
-                pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)))
-        .decode('ascii'))
+    if model is not None:
+        return (
+            base64.b64encode(
+                zlib.compress(
+                    pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)))
+            .decode('ascii'))
 
 
 def decode_object(data: Optional[str]) -> object:
