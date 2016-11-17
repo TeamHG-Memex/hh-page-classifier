@@ -4,7 +4,7 @@ from eli5.sklearn.explain_weights import explain_weights
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
-from sklearn.pipeline import make_pipeline, make_union
+from sklearn.pipeline import make_pipeline, FeatureUnion
 
 
 class BaseModel:
@@ -46,7 +46,7 @@ class DefaultModel(BaseModel):
             ngram_range=(3, 4),
             preprocessor=self.url_preprocessor,
         )
-        self.vec = make_union(self.text_vec, self.url_vec)
+        self.vec = FeatureUnion([('text', self.text_vec), ('url', self.url_vec)])
         self.clf = LogisticRegressionCV(random_state=42)
         self.pipeline = make_pipeline(self.vec, self.clf)
 
@@ -76,7 +76,15 @@ class DefaultModel(BaseModel):
         return self.pipeline.predict_proba(xs)
 
     def explain_weights(self):
-        return explain_weights(self.clf, vec=self.vec, top=30)
+        # TODO - ideally, get features for both vectorizers
+        expl = explain_weights(
+            self.clf, vec=self.vec, top=30, feature_re='^text__')
+        fweights = expl.targets[0].feature_weights
+        for fw_lst in [fweights.pos, fweights.neg]:
+            for fw in fw_lst:
+                if fw.feature.startswith('text__'):
+                    fw.feature = fw.feature[len('text__'):]
+        return expl
 
     def get_params(self):
         return {
