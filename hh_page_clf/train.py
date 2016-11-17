@@ -5,8 +5,7 @@ from typing import List, Dict
 
 import attr
 from eli5.base import FeatureWeights
-from eli5.base_utils import numpy_to_python
-from eli5.formatters import format_as_text, fields
+from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
@@ -265,7 +264,7 @@ def get_meta(
                             if advice else
                             'You can label more pages if you want to improve '
                             'quality, but it\'s better to start crawling and '
-                            'check the quality of crawled pages.'),
+                            'check the quality of crawled pages'),
                 )
             ))
 
@@ -312,7 +311,7 @@ def get_eli5_weights(model: BaseModel):
             'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
         } for fw in w_lst]
     weights.neg.reverse()
-    return numpy_to_python(attr.asdict(weights))
+    return format_as_dict(weights)
 
 
 TOOLTIPS = {

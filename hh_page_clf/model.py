@@ -14,7 +14,7 @@ class BaseModel:
     def set_params(self, **params) -> None:
         raise NotImplementedError
 
-    def fit(self, xs, yx) -> None:
+    def fit(self, xs, ys) -> None:
         raise NotImplementedError
 
     def predict(self, xs):

@@ -1,25 +1,50 @@
 from functools import partial
 from pprint import pprint
 
+import attr
+from eli5.sklearn.explain_weights import explain_weights
 from sklearn.datasets import fetch_20newsgroups
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.linear_model import LogisticRegressionCV
+from sklearn.pipeline import make_pipeline
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.linear_model import LogisticRegression
 
-from hh_page_clf.train import train_model as default_train_model
-
-
-def fit_clf(xs, ys) -> Pipeline:
-    clf = Pipeline([
-        ('vec', CountVectorizer()),
-        ('tfidf', TfidfTransformer()),
-        ('clf', LogisticRegressionCV(random_state=42)),
-    ])
-    clf.fit(xs, ys)
-    return clf
+from hh_page_clf.model import BaseModel, get_attributes, set_attributes
+from hh_page_clf.train import train_model as default_train_model, Meta, AdviceItem
 
 
-train_model = partial(default_train_model, fit_clf=fit_clf)
+class ATestModel(BaseModel):
+    def __init__(self):
+        self.vec = CountVectorizer(preprocessor=lambda x: x['text'].lower())
+        self.clf = LogisticRegression(random_state=42)
+        self.pipeline = make_pipeline(self.vec, self.clf)
+
+    def get_params(self):
+        return {'vec_attrs': get_attributes(self.vec),
+                'clf_attrs': get_attributes(self.clf),
+                }
+
+    def set_params(self, *, vec_attrs, clf_attrs):
+        set_attributes(self.vec, vec_attrs)
+        set_attributes(self.clf, clf_attrs)
+
+    def fit(self, xs, ys):
+        self.pipeline.fit(xs, ys)
+
+    def predict(self, xs):
+        return self.pipeline.predict(xs)
+
+    def predict_proba(self, xs):
+        return self.pipeline.predict_proba(xs)
+
+    def explain_weights(self):
+        return explain_weights(self.clf, vec=self.vec, top=30)
+
+
+train_model = partial(default_train_model, model_cls=ATestModel)
+
+
+def lst_as_dict(lst):
+    return [attr.asdict(x) for x in lst]
 
 
 def test_train_model():
@@ -40,37 +65,35 @@ def test_train_model():
         }
         for n, (text, target) in enumerate(zip(data['data'], data['target']))]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Dataset', '200 documents, 159 with labels (80%) across 40 domains.'),
-        ('Class balance', '33% relevant, 67% not relevant.'),
-        ('Metrics', ''),
-        ('Accuracy', '0.931 ± 0.094'),
-        ('F1', '0.881 ± 0.176'),
-        ('ROC AUC', '0.996 ± 0.006'),
-        ('Positive features', ''),
-        ('space', '13.21'),
-        ('nasa', '8.00'),
-        ('moon', '5.95'),
-        ('ti', '5.44'),
-        ('henry', '4.54'),
-        ('digex', '4.41'),
-        ('gov', '4.33'),
-        ('wpi', '4.17'),
-        ('alaska', '4.11'),
-        ('Other positive features', '3559'),
-        ('Negative features', ''),
-        ('chip', '-4.14'),
-        ('Other negative features', '4533'),
-    ]
-    assert isinstance(result.model, Pipeline)
+    pprint(attr.asdict(result.meta))
+    assert lst_as_dict(result.meta.advice) == [
+        {'kind': 'Notice',
+         'text': "The quality of the classifier is very good, ROC AUC is 0.96. "
+                 "You can label more pages if you want to improve quality, "
+                 "but it's better to start crawling "
+                 "and check the quality of crawled pages.",
+         },
+        ]
+    assert lst_as_dict(result.meta.description) == [
+        {'heading': 'Dataset',
+         'text': '200 documents, 159 with labels (80%) across 40 domains.'},
+        {'heading': 'Class balance',
+         'text': '33% relevant, 67% not relevant.'},
+        {'heading': 'Metrics', 'text': ''},
+        {'heading': 'Accuracy', 'text': '0.881 ± 0.122'},
+        {'heading': 'F1', 'text': '0.772 ± 0.279'},
+        {'heading': 'ROC AUC', 'text': '0.964 ± 0.081'}]
+    assert len(result.meta.weights['pos']) > 0
+    assert len(result.meta.weights['neg']) > 0
+    assert isinstance(result.model, BaseModel)
     assert hasattr(result.model, 'predict_proba')
 
 
 def test_empty():
     result = train_model([])
-    pprint(result.meta)
-    assert result.meta == [('Can not train a model', 'No pages given.')]
+    pprint(attr.asdict(result.meta))
+    assert result.meta == Meta(
+        advice=[AdviceItem('Error', 'Can not train a model: no pages given.')])
     assert result.model is None
 
 
@@ -80,8 +103,10 @@ def test_unlabeled():
              'relevant': None}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [('Can not train a model', 'No labeled pages given.')]
+    pprint(attr.asdict(result.meta))
+    assert result.meta == Meta(
+        advice=[AdviceItem(
+            'Error', 'Can not train a model, no labeled pages given.')])
     assert result.model is None
 
 
@@ -91,11 +116,12 @@ def test_unbalanced():
              'relevant': True}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Can not train a model',
-         'Only relevant pages in sample: '
-         'need examples of not relevant pages too.')]
+    pprint(attr.asdict(result.meta))
+    assert result.meta == Meta(
+        advice=[AdviceItem(
+            'Error',
+            'Can not train a model, only relevant pages in sample: '
+            'need examples of not relevant pages too.')])
     assert result.model is None
 
     docs = [{'html': 'foo',
@@ -103,11 +129,12 @@ def test_unbalanced():
              'relevant': False}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Can not train a model',
-         'Only not relevant pages in sample: '
-         'need examples of relevant pages too.')]
+    pprint(attr.asdict(result.meta))
+    assert result.meta == Meta(
+        advice=[AdviceItem(
+            'Error',
+            'Can not train a model, only not relevant pages in sample: '
+            'need examples of relevant pages too.')])
     assert result.model is None
 
 
@@ -117,27 +144,28 @@ def test_single_domain():
              'relevant': i % 2 == 0}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Warning',
-         "Only 1 domain in data means that it's impossible to do cross-validation "
-         'across domains, and might result in model over-fitting.'),
-        ('Warning',
-         'Number of labeled documents is just 10, consider having at least 100 '
-         'labeled.'),
-        ('Dataset', '10 documents, 10 with labels (100%) across 1 domain.'),
-        ('Class balance', '50% relevant, 50% not relevant.'),
-        ('Metrics', ''),
-        ('Accuracy', '1.000 ± 0.000'),
-        ('F1', '1.000 ± 0.000'),
-        ('ROC AUC', '1.000 ± 0.000'),
-        ('Positive features', ''),
-        ('foo0', '0.00'),
-        ('foo2', '0.00'),
-        ('Negative features', ''),
-        ('foo1', '-0.00'),
-        ('foo3', '-0.00'),
-    ]
+    pprint(attr.asdict(result.meta))
+    assert lst_as_dict(result.meta.advice) == [
+        {'kind': 'Warning',
+         'text': "Only 1 domain in data means that it's impossible to do "
+                 'cross-validation across domains, and might result in '
+                 'model over-fitting.'},
+        {'kind': 'Warning',
+         'text': 'Number of labeled documents is just 10, consider having '
+                 'at least 100 labeled.'},
+        {'kind': 'Notice',
+         'text': 'The quality of the classifier is very good, ROC AUC is '
+                 '1.00. Still, consider fixing warnings shown above.'}]
+    assert lst_as_dict(result.meta.description) == [
+        {'heading': 'Dataset',
+         'text': '10 documents, 10 with labels (100%) across 1 '
+                 'domain.'},
+        {'heading': 'Class balance',
+         'text': '50% relevant, 50% not relevant.'},
+        {'heading': 'Metrics', 'text': ''},
+        {'heading': 'Accuracy', 'text': '1.000 ± 0.000'},
+        {'heading': 'F1', 'text': '1.000 ± 0.000'},
+        {'heading': 'ROC AUC', 'text': '1.000 ± 0.000'}]
     assert result.model is not None
 
 
@@ -147,26 +175,25 @@ def test_two_domains_bad_folds():
              'relevant': i % 2 == 0}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Warning',
-         'Low number of domains (just 2) might result in model over-fitting.'),
-        ('Warning',
-         'Can not do cross-validation, as there are no folds where training data has '
-         'both relevant and non-relevant examples. There are too few domains or the '
-         'dataset is too unbalanced.'),
-        ('Warning',
-         'Number of labeled documents is just 10, consider having at least 100 '
-         'labeled.'),
-        ('Dataset', '10 documents, 10 with labels (100%) across 2 domains.'),
-        ('Class balance', '50% relevant, 50% not relevant.'),
-        ('Positive features', ''),
-        ('foo0', '0.00'),
-        ('foo2', '0.00'),
-        ('Negative features', ''),
-        ('foo1', '-0.00'),
-        ('foo3', '-0.00'),
-    ]
+    pprint(attr.asdict(result.meta))
+    assert lst_as_dict(result.meta.advice) == [
+        {'kind': 'Warning',
+         'text': 'Low number of domains (just 2) might result in model '
+                 'over-fitting.'},
+        {'kind': 'Warning',
+         'text': 'Can not do cross-validation, as there are no folds where '
+                 'training data has both relevant and non-relevant '
+                 'examples. There are too few domains or the dataset is '
+                 'too unbalanced.'},
+        {'kind': 'Warning',
+         'text': 'Number of labeled documents is just 10, consider having '
+                 'at least 100 labeled.'}]
+    assert lst_as_dict(result.meta.description) == [
+        {'heading': 'Dataset',
+         'text': '10 documents, 10 with labels (100%) across 2 '
+                 'domains.'},
+        {'heading': 'Class balance',
+         'text': '50% relevant, 50% not relevant.'}]
     assert result.model is not None
 
 
@@ -176,26 +203,27 @@ def test_two_domains():
              'relevant': i % 3 == 0}
             for i in range(10)]
     result = train_model(docs)
-    pprint(result.meta)
-    assert result.meta == [
-        ('Warning',
-         'Low number of domains (just 2) might result in model over-fitting.'),
-        ('Warning',
-         'Number of labeled documents is just 10, consider having at least 100 '
-         'labeled.'),
-        ('Dataset', '10 documents, 10 with labels (100%) across 2 domains.'),
-        ('Class balance', '40% relevant, 60% not relevant.'),
-        ('Metrics', ''),
-        ('Accuracy', '1.000 ± 0.000'),
-        ('F1', '1.000 ± 0.000'),
-        ('ROC AUC', '1.000 ± 0.000'),
-        ('Positive features', ''),
-        ('foo0', '2.19'),
-        ('Negative features', ''),
-        ('foo2', '-1.10'),
-        ('foo1', '-1.10'),
-        ('<BIAS>', '-0.79'),
-    ]
+    pprint(attr.asdict(result.meta))
+    assert lst_as_dict(result.meta.advice) == [
+        {'kind': 'Warning',
+         'text': 'Low number of domains (just 2) might result in model '
+                 'over-fitting.'},
+        {'kind': 'Warning',
+         'text': 'Number of labeled documents is just 10, consider having '
+                 'at least 100 labeled.'},
+        {'kind': 'Notice',
+         'text': 'The quality of the classifier is very good, ROC AUC is '
+                 '1.00. Still, consider fixing warnings shown above.'}]
+    assert lst_as_dict(result.meta.description) == [
+        {'heading': 'Dataset',
+         'text': '10 documents, 10 with labels (100%) across 2 '
+                 'domains.'},
+        {'heading': 'Class balance',
+         'text': '40% relevant, 60% not relevant.'},
+        {'heading': 'Metrics', 'text': ''},
+        {'heading': 'Accuracy', 'text': '1.000 ± 0.000'},
+        {'heading': 'F1', 'text': '1.000 ± 0.000'},
+        {'heading': 'ROC AUC', 'text': '1.000 ± 0.000'}]
     assert result.model is not None
 
 
@@ -206,12 +234,4 @@ def test_default_clf():
             for i in range(10)]
     result = train_model(docs)
     assert result.model is not None
-    pprint(result.meta)
-    assert result.meta[:4] == [
-        ('Warning',
-         'Number of labeled documents is just 10, consider having at least 100 '
-         'labeled.'),
-        ('Dataset', '10 documents, 10 with labels (100%) across 10 domains.'),
-        ('Class balance', '50% relevant, 50% not relevant.'),
-        ('Metrics', ''),
-    ]
+    pprint(attr.asdict(result.meta))
