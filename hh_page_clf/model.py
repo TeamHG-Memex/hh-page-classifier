@@ -4,6 +4,7 @@ from eli5.sklearn.explain_weights import explain_weights
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
+from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 
 
@@ -41,7 +42,13 @@ class BaseModel:
 
 
 class DefaultModel(BaseModel):
-    def __init__(self, use_url=True):
+    clf_kinds = {
+        'logcv': lambda: LogisticRegressionCV(random_state=42),
+        'extra_tree': lambda : ExtraTreesClassifier(
+            n_estimators=100, random_state=42),
+    }
+
+    def __init__(self, use_url=True, clf_kind='logcv'):
         self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
         self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
         vectorizers = [('text', self.text_vec)]
@@ -56,7 +63,7 @@ class DefaultModel(BaseModel):
         else:
             self.url_vec = None
         self.vec = FeatureUnion(vectorizers)
-        self.clf = LogisticRegressionCV(random_state=42)
+        self.clf = self.clf_kinds[clf_kind]()
         self.pipeline = make_pipeline(self.vec, self.clf)
         super().__init__(use_url=use_url)
 

@@ -46,7 +46,8 @@ class Meta:
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict], model_cls=None, **model_kwargs) -> ModelMeta:
+def train_model(docs: List[Dict], model_cls=None, easy=False,
+                **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
@@ -115,9 +116,11 @@ def train_model(docs: List[Dict], model_cls=None, **model_kwargs) -> ModelMeta:
         metric_futures = []
         if folds:
             metric_futures = [
-                pool.apply_async(eval_on_fold, args=(
-                    fold, model_cls, model_kwargs, all_xs, all_ys))
-                for fold in folds]
+                pool.apply_async(
+                    eval_on_fold, args=(
+                        fold, model_cls, model_kwargs, all_xs, all_ys),
+                    kwds=dict(check_serialization=not easy),
+                ) for fold in folds]
         else:
             advice.append(AdviceItem(
                 WARNING,
@@ -132,7 +135,8 @@ def train_model(docs: List[Dict], model_cls=None, **model_kwargs) -> ModelMeta:
             for k, v in _metrics.items():
                 metrics[k].append(v)
 
-    meta = get_meta(model, metrics, advice, docs, n_labeled, n_domains)
+    meta = get_meta(model, metrics, advice, docs, n_labeled, n_domains,
+                    get_eli5=not easy)
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
@@ -149,13 +153,14 @@ def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
 
 
 def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
-                 all_xs, all_ys) -> Dict:
+                 all_xs, all_ys, check_serialization=True) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
     model = fit_model(model_cls, model_kwargs,
                       flt_list(all_xs, train_idx), all_ys[train_idx])
-    model = decode_object(encode_object(model))  # type: BaseModel
+    if check_serialization:
+        model = decode_object(encode_object(model))  # type: BaseModel
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
     pred_ys = model.predict(test_xs)
@@ -195,6 +200,7 @@ def get_meta(
         docs: List[Dict],
         n_labeled: int,
         n_domains: int,
+        get_eli5: bool=True,
         ) -> Meta:
     """ Return advice and a more technical model description.
     """
@@ -294,7 +300,7 @@ def get_meta(
     return Meta(
         advice=advice,
         description=description,
-        weights=get_eli5_weights(model),
+        weights=get_eli5_weights(model) if get_eli5 else None,
         tooltips=TOOLTIPS,
     )
 
@@ -346,8 +352,12 @@ def main():
     from .utils import configure_logging
 
     configure_logging()
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('message_filename')
+    arg = parser.add_argument
+    arg('message_filename')
+    arg('--easy', action='store_true', help='skip serialization checks and eli5')
+
     args = parser.parse_args()
     opener = gzip.open if args.message_filename.endswith('.gz') else open
     with opener(args.message_filename, 'rt') as f:
@@ -355,7 +365,7 @@ def main():
         message = json.load(f)
     logging.info('Done, starting train_model')
     t0 = time.time()
-    result = train_model(message['pages'])
+    result = train_model(message['pages'], easy=args.easy)
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
         'Model size: {:,} bytes'.format(len(encode_object(result.model))))
