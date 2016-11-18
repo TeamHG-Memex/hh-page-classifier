@@ -46,7 +46,7 @@ class Meta:
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict], model_cls=None) -> ModelMeta:
+def train_model(docs: List[Dict], model_cls=None, **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
@@ -115,8 +115,8 @@ def train_model(docs: List[Dict], model_cls=None) -> ModelMeta:
         metric_futures = []
         if folds:
             metric_futures = [
-                pool.apply_async(
-                    eval_on_fold, args=(fold, model_cls, all_xs, all_ys))
+                pool.apply_async(eval_on_fold, args=(
+                    fold, model_cls, model_kwargs, all_xs, all_ys))
                 for fold in folds]
         else:
             advice.append(AdviceItem(
@@ -125,7 +125,7 @@ def train_model(docs: List[Dict], model_cls=None) -> ModelMeta:
                 'training data has both relevant and non-relevant examples. '
                 'There are too few domains or the dataset is too unbalanced.'
             ))
-        model = fit_model(model_cls, all_xs, all_ys)
+        model = fit_model(model_cls, model_kwargs, all_xs, all_ys)
         metrics = defaultdict(list)
         for future in metric_futures:
             _metrics = future.get()
@@ -142,17 +142,19 @@ def train_model(docs: List[Dict], model_cls=None) -> ModelMeta:
     return ModelMeta(model=model, meta=meta)
 
 
-def fit_model(model_cls, xs, ys) -> BaseModel:
-    model = model_cls()
+def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
+    model = model_cls(**model_kwargs)
     model.fit(xs, ys)
     return model
 
 
-def eval_on_fold(fold, model_cls: BaseModel, all_xs, all_ys) -> Dict:
+def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
+                 all_xs, all_ys) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
-    model = fit_model(model_cls, flt_list(all_xs, train_idx), all_ys[train_idx])
+    model = fit_model(model_cls, model_kwargs,
+                      flt_list(all_xs, train_idx), all_ys[train_idx])
     model = decode_object(encode_object(model))  # type: BaseModel
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]

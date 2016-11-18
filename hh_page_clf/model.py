@@ -8,6 +8,9 @@ from sklearn.pipeline import make_pipeline, FeatureUnion
 
 
 class BaseModel:
+    def __init__(self, **kwargs):
+        self._kwargs = kwargs
+
     def get_params(self) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -27,33 +30,41 @@ class BaseModel:
         raise NotImplementedError
 
     def __getstate__(self):
-        return self.get_params()
+        params = self.get_params()
+        params['_kwargs'] = self._kwargs
+        return params
 
     def __setstate__(self, state):
-        self.__init__()
+        kwargs = state.pop('_kwargs', {})
+        self.__init__(**kwargs)
         self.set_params(**state)
 
 
 class DefaultModel(BaseModel):
-    def __init__(self):
+    def __init__(self, use_url=True):
         self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
-        self.text_vec = TfidfVectorizer(
-            preprocessor=self.text_preprocessor,
-        )
-        self.url_vec = CountVectorizer(
-            binary=True,
-            analyzer='char',
-            ngram_range=(3, 4),
-            preprocessor=self.url_preprocessor,
-        )
-        self.vec = FeatureUnion([('text', self.text_vec), ('url', self.url_vec)])
+        self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+        vectorizers = [('text', self.text_vec)]
+        if use_url:
+            self.url_vec = CountVectorizer(
+                binary=True,
+                analyzer='char',
+                ngram_range=(3, 4),
+                preprocessor=self.url_preprocessor,
+            )
+            vectorizers.append(('url', self.url_vec))
+        else:
+            self.url_vec = None
+        self.vec = FeatureUnion(vectorizers)
         self.clf = LogisticRegressionCV(random_state=42)
         self.pipeline = make_pipeline(self.vec, self.clf)
+        super().__init__(use_url=use_url)
 
     def text_preprocessor(self, item):
         return self.default_text_preprocessor(item['text'])
 
-    def url_preprocessor(self, item):
+    @staticmethod
+    def url_preprocessor(item):
         return item['url'].lower()
 
     def fit(self, xs, ys):
@@ -78,7 +89,7 @@ class DefaultModel(BaseModel):
     def explain_weights(self):
         # TODO - ideally, get features for both vectorizers
         expl = explain_weights(
-            self.clf, vec=self.vec, top=30, feature_re='^text__')
+            self.clf, vec=self.vec, top=30, feature_re='(^text__|^<BIAS>$)')
         fweights = expl.targets[0].feature_weights
         for fw_lst in [fweights.pos, fweights.neg]:
             for fw in fw_lst:
