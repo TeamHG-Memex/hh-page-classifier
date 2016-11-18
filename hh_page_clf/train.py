@@ -1,6 +1,6 @@
 from collections import defaultdict, namedtuple
 import logging
-import multiprocessing
+import multiprocessing.dummy as multiprocessing  # fasttext
 from typing import List, Dict
 
 import attr
@@ -365,7 +365,8 @@ def main():
         message = json.load(f)
     logging.info('Done, starting train_model')
     t0 = time.time()
-    result = train_model(message['pages'], easy=args.easy)
+    from .fasttext_model import FastTextModel
+    result = train_model(message['pages'], easy=args.easy, model_cls=FastTextModel)
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
         'Model size: {:,} bytes'.format(len(encode_object(result.model))))
