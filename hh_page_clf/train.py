@@ -1,6 +1,7 @@
 from collections import defaultdict, namedtuple
 import logging
 import multiprocessing
+import random
 from typing import List, Dict
 
 import attr
@@ -59,6 +60,7 @@ def train_model(docs: List[Dict], model_cls=None, easy=False,
             model=None,
             meta=Meta([AdviceItem(
                 ERROR, 'Can not train a model: no pages given.')]))
+    random.shuffle(docs)
     all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
     if not all_xs:
         return ModelMeta(

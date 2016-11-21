@@ -49,9 +49,7 @@ class DefaultModel(BaseModel):
     }
 
     def __init__(self, use_url=True, clf_kind='logcv'):
-        self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
-        self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
-        vectorizers = [('text', self.text_vec)]
+        vectorizers = []
         if use_url:
             self.url_vec = CountVectorizer(
                 binary=True,
@@ -62,6 +60,9 @@ class DefaultModel(BaseModel):
             vectorizers.append(('url', self.url_vec))
         else:
             self.url_vec = None
+        self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
+        self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+        vectorizers.append(('text', self.text_vec))
         self.vec = FeatureUnion(vectorizers)
         self.clf = self.clf_kinds[clf_kind]()
         self.pipeline = make_pipeline(self.vec, self.clf)
