@@ -51,8 +51,7 @@ class DefaultModel(BaseModel):
     def __init__(self, use_url=True, clf_kind='logcv'):
         vectorizers = []
         if use_url:
-            self.url_vec = CountVectorizer(
-                binary=True,
+            self.url_vec = TfidfVectorizer(
                 analyzer='char',
                 ngram_range=(3, 4),
                 preprocessor=self.url_preprocessor,
