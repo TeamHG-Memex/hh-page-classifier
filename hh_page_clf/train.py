@@ -11,7 +11,6 @@ from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
 from sklearn.cross_validation import LabelKFold, KFold
-from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import tldextract
 
@@ -47,7 +46,11 @@ class Meta:
 ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 
-def train_model(docs: List[Dict], model_cls=None, easy=False,
+def train_model(docs: List[Dict],
+                model_cls=None,
+                skip_validation=False,
+                skip_eli5=False,
+                skip_serialization_check=False,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
@@ -117,12 +120,15 @@ def train_model(docs: List[Dict], model_cls=None, easy=False,
     with multiprocessing.Pool() as pool:
         metric_futures = []
         if folds:
-            metric_futures = [
-                pool.apply_async(
-                    eval_on_fold, args=(
-                        fold, model_cls, model_kwargs, all_xs, all_ys),
-                    kwds=dict(check_serialization=not easy),
-                ) for fold in folds]
+            if not skip_validation:
+                metric_futures = [
+                    pool.apply_async(
+                        eval_on_fold,
+                        args=(
+                            fold, model_cls, model_kwargs, all_xs, all_ys),
+                        kwds=dict(
+                            skip_serialization_check=skip_serialization_check),
+                    ) for fold in folds]
         else:
             advice.append(AdviceItem(
                 WARNING,
@@ -138,7 +144,7 @@ def train_model(docs: List[Dict], model_cls=None, easy=False,
                 metrics[k].append(v)
 
     meta = get_meta(model, metrics, advice, docs, n_labeled, n_domains,
-                    get_eli5=not easy)
+                    skip_eli5=skip_eli5)
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
@@ -155,13 +161,13 @@ def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
 
 
 def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
-                 all_xs, all_ys, check_serialization=True) -> Dict:
+                 all_xs, all_ys, skip_serialization_check=False) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
     model = fit_model(model_cls, model_kwargs,
                       flt_list(all_xs, train_idx), all_ys[train_idx])
-    if check_serialization:
+    if not skip_serialization_check:
         model = decode_object(encode_object(model))  # type: BaseModel
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
@@ -202,7 +208,7 @@ def get_meta(
         docs: List[Dict],
         n_labeled: int,
         n_domains: int,
-        get_eli5: bool=True,
+        skip_eli5: bool=False,
         ) -> Meta:
     """ Return advice and a more technical model description.
     """
@@ -302,7 +308,7 @@ def get_meta(
     return Meta(
         advice=advice,
         description=description,
-        weights=get_eli5_weights(model) if get_eli5 else None,
+        weights=get_eli5_weights(model) if not skip_eli5 else None,
         tooltips=TOOLTIPS,
     )
 
@@ -367,7 +373,10 @@ def main():
         message = json.load(f)
     logging.info('Done, starting train_model')
     t0 = time.time()
-    result = train_model(message['pages'], easy=args.easy)
+    result = train_model(
+        message['pages'],
+        skip_eli5=args.easy,
+        skip_serialization_check=args.easy)
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
         'Model size: {:,} bytes'.format(len(encode_object(result.model))))
