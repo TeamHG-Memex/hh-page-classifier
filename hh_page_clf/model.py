@@ -47,8 +47,9 @@ class DefaultModel(BaseModel):
         'extra_tree': lambda : ExtraTreesClassifier(
             n_estimators=100, random_state=42),
     }
+    default_clf_kind = 'logcv'
 
-    def __init__(self, use_url=True, clf_kind='logcv'):
+    def __init__(self, use_url=True, clf_kind=default_clf_kind):
         vectorizers = []
         if use_url:
             self.url_vec = TfidfVectorizer(

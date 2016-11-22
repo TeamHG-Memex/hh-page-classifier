@@ -364,6 +364,8 @@ def main():
     parser = argparse.ArgumentParser()
     arg = parser.add_argument
     arg('message_filename')
+    arg('--clf', default=DefaultModel.default_clf_kind,
+        choices=sorted(DefaultModel.clf_kinds))
     arg('--easy', action='store_true', help='skip serialization checks and eli5')
 
     args = parser.parse_args()
