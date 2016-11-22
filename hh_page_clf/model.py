@@ -107,26 +107,38 @@ class DefaultModel(BaseModel):
 
     def get_params(self):
         return {
-            'text_vec_attrs': {
-                '_idf_diag': self.text_vec._tfidf._idf_diag,
-                'vocabulary_': self.text_vec.vocabulary_,
-            },
+            'text_vec_attrs': get_attributes(self.text_vec),
             'url_vec_attrs': get_attributes(self.url_vec),
             'clf_attrs': get_attributes(self.clf),
         }
 
     def set_params(self, *, text_vec_attrs, url_vec_attrs, clf_attrs):
-        self.text_vec._tfidf._idf_diag = text_vec_attrs['_idf_diag']
-        self.text_vec.vocabulary_ = text_vec_attrs['vocabulary_']
+        set_attributes(self.text_vec, text_vec_attrs)
         set_attributes(self.url_vec, url_vec_attrs)
         set_attributes(self.clf, clf_attrs)
 
 
 def get_attributes(obj):
+    if isinstance(obj, TfidfVectorizer):
+        return get_tfidf_attributes(obj)
     return {attr: getattr(obj, attr) for attr in dir(obj)
             if not attr.startswith('_') and attr.endswith('_')}
 
 
 def set_attributes(obj, attributes):
+    if isinstance(obj, TfidfVectorizer):
+        set_ifidf_attributes(obj, attributes)
     for k, v in attributes.items():
         setattr(obj, k, v)
+
+
+def get_tfidf_attributes(obj):
+    return {
+        '_idf_diag': obj._tfidf._idf_diag,
+        'vocabulary_': obj.vocabulary_,
+    }
+
+
+def set_ifidf_attributes(obj, attributes):
+    obj._tfidf._idf_diag = attributes['_idf_diag']
+    obj.vocabulary_ = attributes['vocabulary_']
