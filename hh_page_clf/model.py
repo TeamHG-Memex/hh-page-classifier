@@ -95,14 +95,14 @@ class DefaultModel(BaseModel):
         return self.pipeline.predict_proba(xs)
 
     def explain_weights(self):
-        # TODO - ideally, get features for both vectorizers
-        expl = explain_weights(
-            self.clf, vec=self.vec, top=30, feature_re='(^text__|^<BIAS>$)')
+        expl = explain_weights(self.clf, vec=self.vec, top=50)
         fweights = expl.targets[0].feature_weights
         for fw_lst in [fweights.pos, fweights.neg]:
             for fw in fw_lst:
                 if fw.feature.startswith('text__'):
                     fw.feature = fw.feature[len('text__'):]
+                elif fw.feature.startswith('url__'):
+                    fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
         return expl
 
     def get_params(self):
