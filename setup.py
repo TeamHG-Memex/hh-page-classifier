@@ -12,7 +12,7 @@ setup(
         'html-text',
         'kafka-python==1.3.1',
         'numpy',
-        'scikit-learn==0.18',
+        'scikit-learn>=0.18<0.19',
         'scipy==0.18.1',
         'tldextract',
     ],
