@@ -1,4 +1,6 @@
 from collections import defaultdict, namedtuple
+import gzip
+import json
 import logging
 import multiprocessing
 import random
@@ -48,9 +50,11 @@ ModelMeta = namedtuple('ModelMeta', 'model, meta')
 
 def train_model(docs: List[Dict],
                 model_cls=None,
+                target_relevant_ratio=0.3,
                 skip_validation=False,
                 skip_eli5=False,
                 skip_serialization_check=False,
+                add_non_relevant_sample=False,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
@@ -58,101 +62,150 @@ def train_model(docs: List[Dict],
     Return the model itself and a human-readable description of it's performance.
     """
     model_cls = model_cls or DefaultModel
-    if not docs:
-        return ModelMeta(
-            model=None,
-            meta=Meta([AdviceItem(
-                ERROR, 'Can not train a model: no pages given.')]))
-    random.shuffle(docs)
-    all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    if not all_xs:
-        return ModelMeta(
-            model=None,
-            meta=Meta([AdviceItem(
-                ERROR, 'Can not train a model, no labeled pages given.')]))
 
+    if not docs:
+        return no_docs_error()
+
+    all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    n_relevant = sum(doc['relevant'] for doc in all_xs)
+    if n_relevant == 0:
+        return no_relevant_error()
+
+    if add_non_relevant_sample:
+        n_extra_non_relevant = max(
+            0, n_relevant / target_relevant_ratio - len(all_xs))
+        extra_non_relevant = sample_non_relevant(n_extra_non_relevant)
+        all_xs.extend(extra_non_relevant)
+        docs.extend(extra_non_relevant)  # for proper report in get_meta
+    random.shuffle(all_xs)
     all_ys = np.array([doc['relevant'] for doc in all_xs])
-    classes = np.unique(all_ys)
-    if len(classes) == 1:
-        only_cls = classes[0]
-        class_names = ['not relevant', 'relevant']
-        return ModelMeta(
-            model=None,
-            meta=Meta(
-                [AdviceItem(
-                    ERROR,
-                    'Can not train a model, only {} pages in sample: '
-                    'need examples of {} pages too.'.format(
-                        class_names[only_cls], class_names[not only_cls])),
-                ]))
+    advice = []
 
     logging.info('Extracting text')
-    with multiprocessing.Pool() as pool:
-        for doc, text in zip(
-                all_xs, pool.map(html_text.extract_text,
-                                 [doc['html'] for doc in all_xs],
-                                 chunksize=100)):
-            doc['text'] = text
+    add_extracted_text(all_xs)
 
     logging.info('Training and evaluating model')
+    folds = build_folds(all_xs, all_ys, advice)
+    model, metrics = train_and_evaluate(
+        all_xs, all_ys, folds, model_cls, model_kwargs,
+        skip_serialization_check=skip_serialization_check,
+        skip_validation=skip_validation,
+    )
+
+    meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
+    log_meta(meta)
+
+    return ModelMeta(model=model, meta=meta)
+
+
+def no_docs_error():
+    return ModelMeta(
+        model=None,
+        meta=Meta([AdviceItem(
+            ERROR, 'Can not train a model: no pages given.')]))
+
+
+def no_relevant_error():
+    return ModelMeta(
+        model=None,
+        meta=Meta(
+            [AdviceItem(
+                ERROR,
+                'Can not train a model, only irrelevant pages in sample: '
+                'need examples of relevant pages too.')]))
+
+
+def sample_non_relevant(n_pages):
+    pages = []
+    with gzip.open('random-pages.jl.gz', 'rt') as f:
+        for line in f:
+            if len(pages) >= n_pages:
+                break
+            page = json.loads(line)
+            pages.append({
+                'url': page['url'], 'html': page['text'],
+                'relevant': False, 'extra_non_relevant': True,
+            })
+    return pages
+
+
+def add_extracted_text(xs):
+    with multiprocessing.Pool() as pool:
+        for doc, text in zip(
+                xs,
+                pool.map(html_text.extract_text, [doc['html'] for doc in xs],
+                         chunksize=100)):
+            doc['text'] = text
+
+
+def build_folds(all_xs, all_ys, advice):
     domains = [get_domain(doc['url']) for doc in all_xs]
     n_domains = len(set(domains))
-    n_labeled = len(all_xs)
+    n_relevant_domains = len(
+        {domain for domain, is_relevant in zip(domains, all_ys)})
     n_folds = 4
-    advice = []
-    if n_domains == 1:
+    if n_relevant_domains == 1:
         advice.append(AdviceItem(
             WARNING,
-            'Only 1 domain in data means that it\'s impossible to do '
+            'Only 1 relevant domain in data means that it\'s impossible to do '
             'cross-validation across domains, '
-            'and might result in model over-fitting.'
+            'and will likely result in model over-fitting.'
         ))
         folds = KFold(n_splits=n_folds).split(all_xs)
     else:
         folds = (GroupKFold(n_splits=min(n_domains, n_folds))
                  .split(all_xs, groups=domains))
-        if n_domains < n_folds:
-            advice.append(AdviceItem(
-                WARNING,
-                'Low number of domains (just {}) '
-                'might result in model over-fitting.'.format(n_domains)
-            ))
+
+    if n_relevant_domains < WARN_N_RELEVANT_DOMAINS:
+        advice.append(AdviceItem(
+            WARNING,
+            'Low number of relevant domains (just {}) '
+            'might result in model over-fitting.'.format(n_relevant_domains)
+        ))
     folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
+    if not folds:
+        advice.append(AdviceItem(
+            WARNING,
+            'Can not do cross-validation, as there are no folds where '
+            'training data has both relevant and non-relevant examples. '
+            'There are too few domains or the dataset is too unbalanced.'
+        ))
+    return folds
+
+
+def train_and_evaluate(
+        all_xs, all_ys, folds,
+        model_cls, model_kwargs,
+        skip_serialization_check=False,
+        skip_validation=False,
+        ):
     with multiprocessing.Pool() as pool:
         metric_futures = []
-        if folds:
-            if not skip_validation:
-                metric_futures = [
-                    pool.apply_async(
-                        eval_on_fold,
-                        args=(
-                            fold, model_cls, model_kwargs, all_xs, all_ys),
-                        kwds=dict(
-                            skip_serialization_check=skip_serialization_check),
-                    ) for fold in folds]
-        else:
-            advice.append(AdviceItem(
-                WARNING,
-                'Can not do cross-validation, as there are no folds where '
-                'training data has both relevant and non-relevant examples. '
-                'There are too few domains or the dataset is too unbalanced.'
-            ))
+        if folds and not skip_validation:
+            metric_futures = [
+                pool.apply_async(
+                    eval_on_fold,
+                    args=(
+                        fold, model_cls, model_kwargs, all_xs, all_ys),
+                    kwds=dict(
+                        skip_serialization_check=skip_serialization_check),
+                ) for fold in folds]
         model = fit_model(model_cls, model_kwargs, all_xs, all_ys)
         metrics = defaultdict(list)
         for future in metric_futures:
             _metrics = future.get()
             for k, v in _metrics.items():
                 metrics[k].append(v)
+    return model, metrics
 
-    meta = get_meta(model, metrics, advice, docs, n_labeled, n_domains,
-                    skip_eli5=skip_eli5)
+
+def log_meta(meta):
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
     for item in meta.description:
         meta_repr.append('{:<20} {}'.format(item.heading + ':', item.text))
     logging.info('Model meta:\n{}'.format('\n'.join(meta_repr)))
-    return ModelMeta(model=model, meta=meta)
 
 
 def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
@@ -194,6 +247,7 @@ def get_domain(url: str) -> str:
     return tldextract.extract(url).registered_domain.lower()
 
 
+WARN_N_RELEVANT_DOMAINS = 10
 WARN_N_LABELED = 100
 WARN_RELEVANT_RATIO_HIGH = 0.75
 WARN_RELEVANT_RATIO_LOW = 0.05
@@ -206,27 +260,33 @@ def get_meta(
         model: BaseModel,
         metrics: Dict[str, List[float]],
         advice: List[AdviceItem],
-        docs: List[Dict],
-        n_labeled: int,
-        n_domains: int,
+        all_docs: List[Dict],
         skip_eli5: bool=False,
         ) -> Meta:
     """ Return advice and a more technical model description.
     """
     advice = list(advice)
     description = []
-    n_docs = len(docs)
-    relevant = [doc for doc in docs if doc['relevant']]
-    relevant_ratio = len(relevant) / n_labeled
+    all_labeled = [doc for doc in all_docs if doc['relevant'] in {True, False}]
+    human_labeled, extra_labeled = [], []
+    for doc in all_labeled:
+        (extra_labeled if doc.get('extra_non_relevant') else human_labeled)\
+            .append(doc)
 
-    if n_labeled < WARN_N_LABELED:
+    if len(human_labeled) < WARN_N_LABELED:
         advice.append(AdviceItem(
             WARNING,
-            'Number of labeled documents is just {n_labeled}, '
+            'Number of human labeled documents is just {n_human_labeled}, '
             'consider having at least {min_labeled} labeled.'
-            .format(n_labeled=n_labeled, min_labeled=WARN_N_LABELED)
+            .format(n_human_labeled=len(human_labeled),
+                    min_labeled=WARN_N_LABELED)
         ))
+
+    relevant = [doc for doc in all_labeled if doc['relevant']]
+    relevant_ratio = len(relevant) / len(all_labeled)
     if relevant_ratio > WARN_RELEVANT_RATIO_HIGH:
+        # This could still happen if there are too many labeled pages
+        # and not enough sampled negative pages.
         advice.append(AdviceItem(
             WARNING,
             'The ratio of relevant pages is very high: {:.0%}, '
@@ -242,63 +302,33 @@ def get_meta(
             'classifier performance.'
             .format(relevant_ratio)
         ))
-    roc_aucs = metrics.get('ROC AUC')
-    if roc_aucs:
-        roc_auc = np.mean(roc_aucs)
-        fix_advice = (
-            'fixing warnings shown above' if advice else
-            'labeling more pages, or re-labeling them using '
-            'different criteria')
-        if np.isnan(roc_auc):
-            advice.append(AdviceItem(
-                WARNING,
-                'The quality of the classifier is not well defined. '
-                'Consider {advice}.'
-                .format(advice=fix_advice)
-            ))
-        elif roc_auc < WARN_ROC_AUC:
-            advice.append(AdviceItem(
-                WARNING,
-                'The quality of the classifier is {quality}, ROC AUC is just '
-                '{roc_auc:.2f}. Consider {advice}.'
-                .format(
-                    quality=('very bad' if roc_auc < DANGER_ROC_AUC else
-                             'not very good'),
-                    roc_auc=roc_auc,
-                    advice=fix_advice,
-                )
-            ))
-        else:
-            advice.append(AdviceItem(
-                NOTICE,
-                'The quality of the classifier is {quality}, ROC AUC is '
-                '{roc_auc:.2f}. {advice}.'
-                .format(
-                    quality=('very good' if roc_auc > GOOD_ROC_AUC else
-                             'not bad'),
-                    roc_auc=roc_auc,
-                    advice=('Still, consider fixing warnings shown above'
-                            if advice else
-                            'You can label more pages if you want to improve '
-                            'quality, but it\'s better to start crawling and '
-                            'check the quality of crawled pages'),
-                )
-            ))
 
+    add_quality_advice(advice, metrics)
+
+    n_human_domains = len({get_domain(doc['url']) for doc in human_labeled})
     description.append(DescriptionItem(
         'Dataset',
-        '{n_docs} documents, {n_labeled} with labels ({labeled_ratio:.0%}) '
-        'across {n_domains} domain{s}.'.format(
-            n_docs=n_docs,
-            n_labeled=n_labeled,
-            labeled_ratio=n_labeled / n_docs,
-            n_domains=n_domains,
-            s='s' if n_domains > 1 else '',
+        '{n_docs} documents, {n_labeled} labeled across {n_domains} domain{s}'
+        '{extra_labeled}.'
+        .format(
+            n_docs=len(all_docs),
+            n_labeled=len(human_labeled),
+            n_domains=n_human_domains,
+            extra_labeled='' if not extra_labeled else (
+                ', {} random irrelevant documents added'
+                .format(len(extra_labeled))),
+            s='s' if n_human_domains > 1 else '',
         )))
     description.append(DescriptionItem(
         'Class balance',
-        '{:.0%} relevant, {:.0%} not relevant.'
-        .format(relevant_ratio, 1. - relevant_ratio)))
+        '{relevant:.0%} relevant, {non_relevant:.0%} not relevant{extra}.'
+        .format(
+            relevant=relevant_ratio,
+            non_relevant=1. - relevant_ratio,
+            extra='' if not extra_labeled else
+            ' (including {:.0%} random irrelevant documents)'.format(
+                len(extra_labeled) / len(all_labeled)),
+        )))
     if metrics:
         description.append(DescriptionItem('Metrics', ''))
         description.extend(
@@ -312,6 +342,50 @@ def get_meta(
         weights=get_eli5_weights(model) if not skip_eli5 else None,
         tooltips=TOOLTIPS,
     )
+
+
+def add_quality_advice(advice, metrics):
+    roc_aucs = metrics.get('ROC AUC')
+    if not roc_aucs:
+        return
+    roc_auc = np.mean(roc_aucs)
+    fix_advice = (
+        'fixing warnings shown above' if advice else
+        'labeling more pages, or re-labeling them using '
+        'different criteria')
+    if np.isnan(roc_auc):
+        advice.append(AdviceItem(
+            WARNING,
+            'The quality of the classifier is not well defined. '
+            'Consider {advice}.'
+            .format(advice=fix_advice)
+        ))
+    elif roc_auc < WARN_ROC_AUC:
+        advice.append(AdviceItem(
+            WARNING,
+            'The quality of the classifier is {quality}, ROC AUC is just '
+            '{roc_auc:.2f}. Consider {advice}.'
+            .format(
+                quality=('very bad' if roc_auc < DANGER_ROC_AUC else
+                         'not very good'),
+                roc_auc=roc_auc,
+                advice=fix_advice,
+        )))
+    else:
+        advice.append(AdviceItem(
+            NOTICE,
+            'The quality of the classifier is {quality}, ROC AUC is '
+            '{roc_auc:.2f}. {advice}.'
+            .format(
+                quality=('very good' if roc_auc > GOOD_ROC_AUC else
+                         'not bad'),
+                roc_auc=roc_auc,
+                advice=('Still, consider fixing warnings shown above'
+                        if advice else
+                        'You can label more pages if you want to improve '
+                        'quality, but it\'s better to start crawling and '
+                        'check the quality of crawled pages'),
+        )))
 
 
 def get_eli5_weights(model: BaseModel):
