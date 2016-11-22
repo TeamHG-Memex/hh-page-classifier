@@ -129,6 +129,10 @@ def sample_non_relevant(n_pages):
     return pages
 
 
+def doc_is_extra_sampled(doc):
+    return doc.get('extra_non_relevant')
+
+
 def add_extracted_text(xs):
     with multiprocessing.Pool() as pool:
         for doc, text in zip(
@@ -226,15 +230,27 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
     pred_ys = model.predict(test_xs)
-    try:
-        auc = roc_auc_score(test_ys, pred_ys_prob)
-    except ValueError:
-        auc = float('nan')
-    return {
+
+    metrics = {
         'Accuracy': accuracy_score(test_ys, pred_ys),
         'F1': f1_score(test_ys, pred_ys),
-        'ROC AUC': auc,
+        'ROC AUC': get_roc_auc(test_ys, pred_ys_prob),
     }
+
+    human_idx = [idx for idx, doc in enumerate(test_xs)
+                 if not doc_is_extra_sampled(doc)]
+    if human_idx and len(human_idx) != len(test_idx):
+        metrics['ROC AUC (human-labeled)'] = get_roc_auc(
+            test_ys[human_idx], pred_ys_prob[human_idx])
+
+    return metrics
+
+
+def get_roc_auc(test_ys, pred_ys_prob):
+    try:
+        return roc_auc_score(test_ys, pred_ys_prob)
+    except ValueError:
+        return float('nan')
 
 
 def flt_list(lst: List, indices: np.ndarray) -> List:
@@ -270,7 +286,7 @@ def get_meta(
     all_labeled = [doc for doc in all_docs if doc['relevant'] in {True, False}]
     human_labeled, extra_labeled = [], []
     for doc in all_labeled:
-        (extra_labeled if doc.get('extra_non_relevant') else human_labeled)\
+        (extra_labeled if doc_is_extra_sampled(doc) else human_labeled)\
             .append(doc)
 
     if len(human_labeled) < WARN_N_LABELED:
