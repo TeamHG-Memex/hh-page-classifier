@@ -10,7 +10,7 @@ from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
-from sklearn.cross_validation import LabelKFold, KFold
+from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import tldextract
 
@@ -107,9 +107,10 @@ def train_model(docs: List[Dict],
             'cross-validation across domains, '
             'and might result in model over-fitting.'
         ))
-        folds = KFold(n_labeled, n_folds=n_folds)
+        folds = KFold(n_splits=n_folds).split(all_xs)
     else:
-        folds = LabelKFold(domains, n_folds=min(n_domains, n_folds))
+        folds = (GroupKFold(n_splits=min(n_domains, n_folds))
+                 .split(all_xs, groups=domains))
         if n_domains < n_folds:
             advice.append(AdviceItem(
                 WARNING,
