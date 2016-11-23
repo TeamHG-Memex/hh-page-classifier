@@ -111,7 +111,7 @@ def no_relevant_error():
         meta=Meta(
             [AdviceItem(
                 ERROR,
-                'Can not train a model, only irrelevant pages in sample: '
+                'Can not train a model, only non-relevant pages in sample: '
                 'need examples of relevant pages too.')]))
 
 
@@ -230,24 +230,18 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
     pred_ys = model.predict(test_xs)
-
     metrics = {
-        'Accuracy': accuracy_score(test_ys, pred_ys),
-        # 'F1': f1_score(test_ys, pred_ys),
-        'ROC AUC': get_roc_auc(test_ys, pred_ys_prob),
+        'Accuracy': {'all': accuracy_score(test_ys, pred_ys)},
+        'ROC AUC': {'all': get_roc_auc(test_ys, pred_ys_prob)},
     }
 
     human_idx = [idx for idx, doc in enumerate(test_xs)
                  if not doc_is_extra_sampled(doc)]
     if human_idx and len(human_idx) != len(test_idx):
-        metrics.update({
-            human_metrics_key('Accuracy'):
-                accuracy_score(test_ys[human_idx], pred_ys[human_idx]),
-            # human_metrics_key('F1'):
-            #    f1_score(test_ys[human_idx], pred_ys[human_idx]),
-            human_metrics_key('ROC AUC'):
-                get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx]),
-        })
+        metrics['Accuracy']['human'] = \
+            accuracy_score(test_ys[human_idx], pred_ys[human_idx])
+        metrics['ROC AUC']['human'] = \
+            get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx])
 
     return metrics
 
@@ -312,7 +306,7 @@ def get_meta(
         advice.append(AdviceItem(
             WARNING,
             'The ratio of relevant pages is very high: {:.0%}, '
-            'consider finding and labeling more irrelevant pages to improve '
+            'consider finding and labeling more non-relevant pages to improve '
             'classifier performance.'
             .format(relevant_ratio)
         ))
@@ -337,7 +331,7 @@ def get_meta(
             n_labeled=len(human_labeled),
             n_domains=n_human_domains,
             extra_labeled='' if not extra_labeled else (
-                ', {} random irrelevant documents added'
+                ', {} random non-relevant documents added'
                 .format(len(extra_labeled))),
             s='s' if n_human_domains > 1 else '',
         )))
@@ -348,15 +342,10 @@ def get_meta(
             relevant=relevant_ratio,
             non_relevant=1. - relevant_ratio,
             extra='' if not extra_labeled else
-            ' (including {:.0%} random irrelevant documents)'.format(
+            ' (including {:.0%} random non-relevant documents)'.format(
                 len(extra_labeled) / len(all_labeled)),
         )))
-    if metrics:
-        description.append(DescriptionItem('Metrics', ''))
-        description.extend(
-            DescriptionItem(
-                k, '{:.3f} ± {:.3f}'.format(np.mean(v), 1.96 * np.std(v)))
-            for k, v in sorted(metrics.items()))
+    description.extend(metrics_description(metrics))
 
     return Meta(
         advice=advice,
@@ -367,12 +356,11 @@ def get_meta(
 
 
 def add_quality_advice(advice, metrics):
-    human_roc_key = human_metrics_key('ROC AUC')
-    roc_key = human_roc_key if human_roc_key in metrics else 'ROC AUC'
+    roc_key = 'ROC AUC'
     roc_aucs = metrics.get(roc_key)
     if not roc_aucs:
         return
-    roc_auc = np.mean(roc_aucs)
+    roc_auc = np.mean([m.get('human', m['all']) for m in roc_aucs])
     fix_advice = (
         'fixing warnings shown above' if advice else
         'labeling more pages, or re-labeling them using '
@@ -414,6 +402,29 @@ def add_quality_advice(advice, metrics):
         )))
 
 
+def metrics_description(metrics):
+    description = []
+    if metrics:
+        description.append(DescriptionItem('Metrics', ''))
+        for name, values in sorted(metrics.items()):
+            all_values = [v['all'] for v in values]
+            human_values = list(filter(None, (v.get('human') for v in values)))
+            if human_values:
+                text = (
+                    '{} (human labeled examples), '
+                    '{} (human labeled + random non-relevant examples)'
+                    .format(format_mean_and_std(human_values),
+                            format_mean_and_std(all_values)))
+            else:
+                text = format_mean_and_std(all_values)
+            description.append(DescriptionItem(name, text))
+    return description
+
+
+def format_mean_and_std(values):
+    return '{:.3f} ± {:.3f}'.format(np.mean(values), 1.96 * np.std(values))
+
+
 def get_eli5_weights(model: BaseModel):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
@@ -431,10 +442,6 @@ def get_eli5_weights(model: BaseModel):
     return format_as_dict(weights)
 
 
-def human_metrics_key(key):
-    return '{} H'.format(key)
-
-
 TOOLTIPS = {
     'ROC AUC': (
         'Area under ROC (receiver operating characteristic) curve '
@@ -448,22 +455,7 @@ TOOLTIPS = {
         'relevant or not relevant. This metric is easy to interpret but '
         'not very good for unbalanced datasets.'
     ),
-    'F1': (
-        'F1 score is a combination of recall and precision for detecting '
-        'relevant pages. It shows how good is a classifier at detecting '
-        'relevant pages at default threshold.'
-        'Worst value is 0.0 and perfect value is 1.0.'
-    ),
 }
-H_TOOLTIP = (
-    '"H" means that this metric is calculated only on human-labeled '
-    'documents, not including random non-relevant documents that were added '
-    'to improve class balance.'
-)
-TOOLTIPS.update({
-    human_metrics_key(key): '{} {}'.format(H_TOOLTIP, value)
-    for key, value in TOOLTIPS.items()
-})
 
 
 def main():
