@@ -241,18 +241,15 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
                  if not doc_is_extra_sampled(doc)]
     if human_idx and len(human_idx) != len(test_idx):
         metrics.update({
-            'Accuracy {}'.format(HUMAN_LABELED):
+            human_metrics_key('Accuracy'):
                 accuracy_score(test_ys[human_idx], pred_ys[human_idx]),
-            # 'F1 {}'.format(HUMAN_LABELED):
+            # human_metrics_key('F1'):
             #    f1_score(test_ys[human_idx], pred_ys[human_idx]),
-            'ROC AUC {}'.format(HUMAN_LABELED):
+            human_metrics_key('ROC AUC'):
                 get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx]),
         })
 
     return metrics
-
-
-HUMAN_LABELED = '(only human-labeled)'
 
 
 def get_roc_auc(test_ys, pred_ys_prob):
@@ -370,7 +367,7 @@ def get_meta(
 
 
 def add_quality_advice(advice, metrics):
-    human_roc_key = 'ROC AUC {}'.format(HUMAN_LABELED)
+    human_roc_key = human_metrics_key('ROC AUC')
     roc_key = human_roc_key if human_roc_key in metrics else 'ROC AUC'
     roc_aucs = metrics.get(roc_key)
     if not roc_aucs:
@@ -434,6 +431,10 @@ def get_eli5_weights(model: BaseModel):
     return format_as_dict(weights)
 
 
+def human_metrics_key(key):
+    return '{} H'.format(key)
+
+
 TOOLTIPS = {
     'ROC AUC': (
         'Area under ROC (receiver operating characteristic) curve '
@@ -454,6 +455,15 @@ TOOLTIPS = {
         'Worst value is 0.0 and perfect value is 1.0.'
     ),
 }
+H_TOOLTIP = (
+    '"H" means that this metric is calculated only on human-labeled '
+    'documents, not including random non-relevant documents that were added '
+    'to improve class balance.'
+)
+TOOLTIPS.update({
+    human_metrics_key(key): '{} {}'.format(H_TOOLTIP, value)
+    for key, value in TOOLTIPS.items()
+})
 
 
 def main():
