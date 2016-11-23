@@ -233,17 +233,26 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
 
     metrics = {
         'Accuracy': accuracy_score(test_ys, pred_ys),
-        'F1': f1_score(test_ys, pred_ys),
+        # 'F1': f1_score(test_ys, pred_ys),
         'ROC AUC': get_roc_auc(test_ys, pred_ys_prob),
     }
 
     human_idx = [idx for idx, doc in enumerate(test_xs)
                  if not doc_is_extra_sampled(doc)]
     if human_idx and len(human_idx) != len(test_idx):
-        metrics['ROC AUC (human-labeled)'] = get_roc_auc(
-            test_ys[human_idx], pred_ys_prob[human_idx])
+        metrics.update({
+            'Accuracy {}'.format(HUMAN_LABELED):
+                accuracy_score(test_ys[human_idx], pred_ys[human_idx]),
+            # 'F1 {}'.format(HUMAN_LABELED):
+            #    f1_score(test_ys[human_idx], pred_ys[human_idx]),
+            'ROC AUC {}'.format(HUMAN_LABELED):
+                get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx]),
+        })
 
     return metrics
+
+
+HUMAN_LABELED = '(only human-labeled)'
 
 
 def get_roc_auc(test_ys, pred_ys_prob):
@@ -361,7 +370,9 @@ def get_meta(
 
 
 def add_quality_advice(advice, metrics):
-    roc_aucs = metrics.get('ROC AUC')
+    human_roc_key = 'ROC AUC {}'.format(HUMAN_LABELED)
+    roc_key = human_roc_key if human_roc_key in metrics else 'ROC AUC'
+    roc_aucs = metrics.get(roc_key)
     if not roc_aucs:
         return
     roc_auc = np.mean(roc_aucs)
@@ -379,22 +390,24 @@ def add_quality_advice(advice, metrics):
     elif roc_auc < WARN_ROC_AUC:
         advice.append(AdviceItem(
             WARNING,
-            'The quality of the classifier is {quality}, ROC AUC is just '
+            'The quality of the classifier is {quality}, {roc_key} is just '
             '{roc_auc:.2f}. Consider {advice}.'
             .format(
                 quality=('very bad' if roc_auc < DANGER_ROC_AUC else
                          'not very good'),
+                roc_key=roc_key,
                 roc_auc=roc_auc,
                 advice=fix_advice,
         )))
     else:
         advice.append(AdviceItem(
             NOTICE,
-            'The quality of the classifier is {quality}, ROC AUC is '
+            'The quality of the classifier is {quality}, {roc_key} is '
             '{roc_auc:.2f}. {advice}.'
             .format(
                 quality=('very good' if roc_auc > GOOD_ROC_AUC else
                          'not bad'),
+                roc_key=roc_key,
                 roc_auc=roc_auc,
                 advice=('Still, consider fixing warnings shown above'
                         if advice else
