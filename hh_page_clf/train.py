@@ -54,7 +54,7 @@ def train_model(docs: List[Dict],
                 skip_validation=False,
                 skip_eli5=False,
                 skip_serialization_check=False,
-                add_non_relevant_sample=False,
+                add_non_relevant_sample=True,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
