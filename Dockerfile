@@ -8,7 +8,10 @@ COPY requirements.txt .
 RUN pip install -U pip wheel && \
     pip install -r requirements.txt
 
-COPY . .
+COPY random-pages.jl.gz .
+
+COPY setup.py .
+COPY hh_page_clf hh_page_clf
 RUN tree
 RUN pip install -e .
 
