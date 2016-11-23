@@ -3,4 +3,5 @@
 !requirements.txt
 !README.rst
 !hh_page_clf
+!random-pages.jl.gz
 **/__pycache__
