@@ -10,16 +10,21 @@ setup(
         'attrs',
         'eli5',
         'html-text',
+        'json_lines==0.2.0',
         'kafka-python==1.3.1',
         'numpy',
         'scikit-learn>=0.18<0.19',
         'scipy==0.18.1',
         'tldextract',
+        'tqdm',
+        'ujson',
     ],
-    entry_points = {
+    entry_points={
         'console_scripts': [
             'hh-page-clf-service=hh_page_clf.service:main',
             'hh-page-clf-train=hh_page_clf.train:main',
+            'train-lda=hh_page_clf.train_lda:main',
+            'extract-texts=hh_page_clf.train_lda:extract_texts',
         ],
     },
     classifiers=[
