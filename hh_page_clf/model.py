@@ -2,10 +2,12 @@ from typing import Dict, Any
 
 from eli5.sklearn.explain_weights import explain_weights
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.externals import joblib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
+from sklearn.preprocessing import FunctionTransformer
 
 
 class BaseModel:
@@ -49,7 +51,7 @@ class DefaultModel(BaseModel):
     }
     default_clf_kind = 'logcv'
 
-    def __init__(self, use_url=True, clf_kind=default_clf_kind):
+    def __init__(self, use_url=True, use_lda=True, clf_kind=default_clf_kind):
         vectorizers = []
         if use_url:
             self.url_vec = TfidfVectorizer(
@@ -60,6 +62,15 @@ class DefaultModel(BaseModel):
             vectorizers.append(('url', self.url_vec))
         else:
             self.url_vec = None
+        if use_lda:
+            self.lda = joblib.load('lda-15k.joblib')
+            # TODO - proper feature names
+            vectorizers.append(
+                ('lda', FunctionTransformer(
+                    func=lambda xs: self.lda.transform(
+                        [x['text'].lower() for x in xs]),
+                    validate=False,
+                )))
         self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
         self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
         vectorizers.append(('text', self.text_vec))
@@ -116,6 +127,25 @@ class DefaultModel(BaseModel):
         set_attributes(self.text_vec, text_vec_attrs)
         set_attributes(self.url_vec, url_vec_attrs)
         set_attributes(self.clf, clf_attrs)
+
+
+class LDAModel(BaseModel):
+    def __init__(self):
+        self.lda = joblib.load('lda-15k.joblib')
+        self.clf = ExtraTreesClassifier(n_estimators=100)
+        super().__init__()
+
+    def fit(self, xs, ys):
+        self.clf.fit(self.lda_xs(xs), ys)
+
+    def predict(self, xs):
+        return self.clf.predict(self.lda_xs(xs))
+
+    def predict_proba(self, xs):
+        return self.clf.predict_proba(self.lda_xs(xs))
+
+    def lda_xs(self, xs):
+        return self.lda.transform([x['text'] for x in xs])
 
 
 def get_attributes(obj):

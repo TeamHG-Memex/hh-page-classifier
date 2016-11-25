@@ -13,11 +13,11 @@ from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import numpy as np
 from sklearn.model_selection import GroupKFold, KFold
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 import tldextract
 
 from .utils import decode_object, encode_object
-from .model import BaseModel, DefaultModel
+from .model import BaseModel, DefaultModel, LDAModel
 
 
 ERROR = 'Error'
@@ -470,8 +470,7 @@ def main():
     parser = argparse.ArgumentParser()
     arg = parser.add_argument
     arg('message_filename')
-    arg('--clf', default=DefaultModel.default_clf_kind,
-        choices=sorted(DefaultModel.clf_kinds))
+    arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--easy', action='store_true', help='skip serialization checks and eli5')
 
     args = parser.parse_args()
@@ -481,10 +480,16 @@ def main():
         message = json.load(f)
     logging.info('Done, starting train_model')
     t0 = time.time()
+    model_kwargs = {}
+    if args.clf is not None:
+        model_kwargs['clf_kind'] = args.clf
     result = train_model(
         message['pages'],
         skip_eli5=args.easy,
-        skip_serialization_check=args.easy)
+        skip_serialization_check=args.easy,
+       #model_cls=LDAModel,
+        **model_kwargs,
+    )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
         'Model size: {:,} bytes'.format(len(encode_object(result.model))))
