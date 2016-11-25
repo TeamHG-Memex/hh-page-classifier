@@ -1,10 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 setup(
     name='hh-page-clf',
     url='https://github.com/TeamHG-Memex/hh-page-classifier',
-    packages=['hh_page_clf'],
+    packages=find_packages(exclude=['tests']),
     include_package_data=True,
     install_requires=[
         'attrs',
@@ -23,9 +23,9 @@ setup(
         'console_scripts': [
             'hh-page-clf-service=hh_page_clf.service:main',
             'hh-page-clf-train=hh_page_clf.train:main',
-            'train-lda=hh_page_clf.train_lda:main',
-            'extract-texts=hh_page_clf.train_lda:extract_texts',
-            'dmoz-to-csv=hh_page_clf.dmoz_reader:to_csv',
+            'train-lda=hh_page_clf.pretraining.train_lda:main',
+            'extract-texts=hh_page_clf.pretraining.extract_texts:main',
+            'dmoz-to-csv=hh_page_clf.pretraining.dmoz_reader:to_csv',
         ],
     },
     classifiers=[
