@@ -25,6 +25,7 @@ setup(
             'hh-page-clf-train=hh_page_clf.train:main',
             'train-lda=hh_page_clf.train_lda:main',
             'extract-texts=hh_page_clf.train_lda:extract_texts',
+            'dmoz-to-csv=hh_page_clf.dmoz_reader:to_csv',
         ],
     },
     classifiers=[
