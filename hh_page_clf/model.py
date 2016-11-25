@@ -121,15 +121,17 @@ class DefaultModel(BaseModel):
 def get_attributes(obj):
     if isinstance(obj, TfidfVectorizer):
         return get_tfidf_attributes(obj)
-    return {attr: getattr(obj, attr) for attr in dir(obj)
-            if not attr.startswith('_') and attr.endswith('_')}
+    else:
+        return {attr: getattr(obj, attr) for attr in dir(obj)
+                if not attr.startswith('_') and attr.endswith('_')}
 
 
 def set_attributes(obj, attributes):
     if isinstance(obj, TfidfVectorizer):
         set_ifidf_attributes(obj, attributes)
-    for k, v in attributes.items():
-        setattr(obj, k, v)
+    else:
+        for k, v in attributes.items():
+            setattr(obj, k, v)
 
 
 def get_tfidf_attributes(obj):
