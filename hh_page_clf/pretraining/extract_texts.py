@@ -31,7 +31,10 @@ def main():
 def text_worker(item, html_field):
     url = item.get('url')
     html = item.get(html_field)
-    text = html_text.extract_text(html)
+    try:
+        text = html_text.extract_text(html)
+    except UnicodeEncodeError:
+        text = html
     text_item = {'text': text}
     if url is not None:
         text_item['url'] = url
