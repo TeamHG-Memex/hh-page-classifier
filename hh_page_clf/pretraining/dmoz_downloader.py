@@ -11,22 +11,18 @@ class Spider(scrapy.Spider):
         'USER_AGENT': 'Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 '
                       '(KHTML, like Gecko) Ubuntu Chromium/43.0.2357.130 '
                       'Chrome/43.0.2357.130 Safari/537.36',
-        'CONCURRENT_REQUESTS': 64,
-        'CONCURRENT_REQUESTS_PER_DOMAIN': 10,
+        'CONCURRENT_REQUESTS': 128,
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 5,
         'DOWNLOAD_DELAY': 0.0,
+        'COOKIES_ENABLED': False,
+        'REACTOR_THREADPOOL_MAXSIZE': 64,
+        'DOWNLOAD_TIMEOUT': 30,
     }
 
     def __init__(self, filename):
         with gzip.open(filename, 'rt') as f:
-            # self.start_urls = [url for url, _ in csv.reader(f)
-            #                   if url.startswith('http')]
-            self.start_urls = []
-            try:
-                for url, _ in csv.reader(f):
-                    if url.startswith('http'):
-                        self.start_urls.append(url)
-            except Exception:
-                pass
+            self.start_urls = [url for url, _ in csv.reader(f)
+                              if url.startswith('http')]
             print('{:,} start urls'.format(len(self.start_urls)))
             random.shuffle(self.start_urls)
         super().__init__()
