@@ -19,7 +19,8 @@ def main():
     arg('output', help='Output in jl.gz format with text in "text" field')
     args = parser.parse_args()
 
-    with json_lines.open(args.input) as f, gzip.open(args.output, 'wt') as outf:
+    with json_lines.open(args.input, broken=True) as f, gzip.open(
+            args.output, 'wt') as outf:
         with multiprocessing.Pool() as pool:
             for text_item in pool.imap_unordered(
                     partial(text_worker, html_field=args.html_field), f):
