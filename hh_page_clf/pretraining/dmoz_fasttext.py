@@ -23,6 +23,7 @@ def main():
             topics = topics.split('/')
             if topics[0] == 'Top':
                 topics = topics[1:]
+            topics = [t for t in topics if not (len(t) == 1 and t.isupper())]
             for topic in topics:
                 outf.write('__label__{} '.format(topic))
             outf.write(to_single_line(item['text']))
