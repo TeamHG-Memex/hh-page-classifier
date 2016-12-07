@@ -87,7 +87,8 @@ class DefaultModel(BaseModel):
         self.vec = FeatureUnion(vectorizers)
         self.clf = self.clf_kinds[clf_kind]()
         self.pipeline = make_pipeline(self.vec, self.clf)
-        super().__init__(use_url=use_url)
+        super().__init__(use_url=use_url, use_lda=use_lda, use_dmoz=use_dmoz,
+                         clf_kind=clf_kind)
 
     def text_preprocessor(self, item):
         return self.default_text_preprocessor(item['text'])
@@ -131,15 +132,16 @@ class DefaultModel(BaseModel):
     def explain_weights(self):
         expl = explain_weights(self.clf, vec=self.vec, top=100)
                                # feature_re='^dmoz_')
-        fweights = expl.targets[0].feature_weights
-        for fw_lst in [fweights.pos, fweights.neg]:
-            for fw in fw_lst:
-                if fw.feature.startswith('text__'):
-                    fw.feature = fw.feature[len('text__'):]
-                elif fw.feature.startswith('url__'):
-                    fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
-                elif fw.feature.startswith('dmoz__dmoz_'):
-                    fw.feature = 'dmoz: {}'.format(fw.feature[len('dmoz__dmoz_'):])
+        if expl.targets:
+            fweights = expl.targets[0].feature_weights
+            for fw_lst in [fweights.pos, fweights.neg]:
+                for fw in fw_lst:
+                    if fw.feature.startswith('text__'):
+                        fw.feature = fw.feature[len('text__'):]
+                    elif fw.feature.startswith('url__'):
+                        fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
+                    elif fw.feature.startswith('dmoz__dmoz_'):
+                        fw.feature = 'dmoz: {}'.format(fw.feature[len('dmoz__dmoz_'):])
         return expl
 
     def get_params(self):
@@ -196,12 +198,16 @@ class LDAModel(BaseModel):
         return self.lda.transform([x['text'] for x in xs])
 
 
+skip_attributes = {'feature_importances_'}
+
+
 def get_attributes(obj):
     if isinstance(obj, TfidfVectorizer):
         return get_tfidf_attributes(obj)
     else:
         return {attr: getattr(obj, attr) for attr in dir(obj)
-                if not attr.startswith('_') and attr.endswith('_')}
+                if not attr.startswith('_') and attr.endswith('_')
+                and attr not in skip_attributes}
 
 
 def set_attributes(obj, attributes):
@@ -209,7 +215,11 @@ def set_attributes(obj, attributes):
         set_ifidf_attributes(obj, attributes)
     else:
         for k, v in attributes.items():
-            setattr(obj, k, v)
+            try:
+                setattr(obj, k, v)
+            except AttributeError:
+                raise AttributeError(
+                    'can\'t set attribute {} on {}'.format(k, obj))
 
 
 def get_tfidf_attributes(obj):
