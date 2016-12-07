@@ -52,7 +52,8 @@ class DefaultModel(BaseModel):
     }
     default_clf_kind = 'logcv'
 
-    def __init__(self, use_url=True, use_lda=False, use_dmoz=True,
+    def __init__(self, use_url=True, use_text=True,
+                 use_lda=False, use_dmoz=True,
                  clf_kind=default_clf_kind):
         vectorizers = []
         if use_url:
@@ -81,9 +82,12 @@ class DefaultModel(BaseModel):
             vectorizers.append(('dmoz', self.dmoz_vec))
         else:
             self.dmoz_vec = None
-        self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
-        self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
-        vectorizers.append(('text', self.text_vec))
+        if use_text:
+            self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
+            self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+            vectorizers.append(('text', self.text_vec))
+        else:
+            self.text_vec = None
         self.vec = FeatureUnion(vectorizers)
         self.clf = self.clf_kinds[clf_kind]()
         self.pipeline = make_pipeline(self.vec, self.clf)
@@ -109,16 +113,17 @@ class DefaultModel(BaseModel):
 
     def fit(self, xs, ys):
         xs = self.preprocess(xs)
-        vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
-        transformed = vec.fit_transform(xs)
-        feature_selection_clf = SGDClassifier(
-            loss='log', penalty='l2', n_iter=50, random_state=42)
-        feature_selection_clf.fit(transformed, ys)
-        abs_coefs = np.abs(feature_selection_clf.coef_[0])
-        features = set((abs_coefs > np.mean(abs_coefs)).nonzero()[0])
-        # FIXME - relies on ngram_range=(1, 1)
-        self.text_vec.vocabulary = [
-            w for w, idx in vec.vocabulary_.items() if idx in features]
+        if self.text_vec:
+            vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+            transformed = vec.fit_transform(xs)
+            feature_selection_clf = SGDClassifier(
+                loss='log', penalty='l2', n_iter=50, random_state=42)
+            feature_selection_clf.fit(transformed, ys)
+            abs_coefs = np.abs(feature_selection_clf.coef_[0])
+            features = set((abs_coefs > np.mean(abs_coefs)).nonzero()[0])
+            # FIXME - relies on ngram_range=(1, 1)
+            self.text_vec.vocabulary = [
+                w for w, idx in vec.vocabulary_.items() if idx in features]
         self.pipeline.fit(xs, ys)
 
     def predict(self, xs):
@@ -131,7 +136,6 @@ class DefaultModel(BaseModel):
 
     def explain_weights(self):
         expl = explain_weights(self.clf, vec=self.vec, top=100)
-                               # feature_re='^dmoz_')
         if expl.targets:
             fweights = expl.targets[0].feature_weights
             for fw_lst in [fweights.pos, fweights.neg]:
@@ -142,6 +146,7 @@ class DefaultModel(BaseModel):
                         fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
                     elif fw.feature.startswith('dmoz__dmoz_'):
                         fw.feature = 'dmoz: {}'.format(fw.feature[len('dmoz__dmoz_'):])
+        # TODO - same for feature importances
         return expl
 
     def get_params(self):
@@ -177,25 +182,6 @@ class PrefixDictVectorizer(DictVectorizer):
     def with_prefix(self, xs):
         return [{k: v for k, v in item.items() if k.startswith(self.prefix)}
                 for item in xs]
-
-
-class LDAModel(BaseModel):
-    def __init__(self):
-        self.lda = joblib.load('lda-15k.joblib')
-        self.clf = ExtraTreesClassifier(n_estimators=100)
-        super().__init__()
-
-    def fit(self, xs, ys):
-        self.clf.fit(self.lda_xs(xs), ys)
-
-    def predict(self, xs):
-        return self.clf.predict(self.lda_xs(xs))
-
-    def predict_proba(self, xs):
-        return self.clf.predict_proba(self.lda_xs(xs))
-
-    def lda_xs(self, xs):
-        return self.lda.transform([x['text'] for x in xs])
 
 
 skip_attributes = {'feature_importances_'}
