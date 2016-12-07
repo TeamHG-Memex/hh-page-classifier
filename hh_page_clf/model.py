@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 from sklearn.preprocessing import FunctionTransformer
@@ -51,7 +52,8 @@ class DefaultModel(BaseModel):
     }
     default_clf_kind = 'logcv'
 
-    def __init__(self, use_url=True, use_lda=True, clf_kind=default_clf_kind):
+    def __init__(self, use_url=True, use_lda=False, use_dmoz=True,
+                 clf_kind=default_clf_kind):
         vectorizers = []
         if use_url:
             self.url_vec = TfidfVectorizer(
@@ -71,6 +73,14 @@ class DefaultModel(BaseModel):
                         [x['text'].lower() for x in xs]),
                     validate=False,
                 )))
+        if use_dmoz:
+            import fasttext
+            self.dmoz = fasttext.load_model('dmoz-ng1-mc10-mcl100.model.bin.bin')
+            # TODO - get rid of self.preprocess, do it in vectorizer
+            self.dmoz_vec = PrefixDictVectorizer('dmoz')
+            vectorizers.append(('dmoz', self.dmoz_vec))
+        else:
+            self.dmoz_vec = None
         self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
         self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
         vectorizers.append(('text', self.text_vec))
@@ -86,7 +96,18 @@ class DefaultModel(BaseModel):
     def url_preprocessor(item):
         return item['url'].lower()
 
+    def preprocess(self, xs):
+        if self.dmoz_vec:
+            from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
+            for item, probs in zip(xs, self.dmoz.predict_proba([
+                    to_single_line(x['text']) for x in xs], k=10)):
+                for label, prob in probs:
+                    label = 'dmoz_{}'.format(label[len('__label__'):])
+                    item[label] = 100 * prob
+        return xs
+
     def fit(self, xs, ys):
+        xs = self.preprocess(xs)
         vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
         transformed = vec.fit_transform(xs)
         feature_selection_clf = SGDClassifier(
@@ -100,13 +121,16 @@ class DefaultModel(BaseModel):
         self.pipeline.fit(xs, ys)
 
     def predict(self, xs):
+        xs = self.preprocess(xs)
         return self.pipeline.predict(xs)
 
     def predict_proba(self, xs):
+        xs = self.preprocess(xs)
         return self.pipeline.predict_proba(xs)
 
     def explain_weights(self):
-        expl = explain_weights(self.clf, vec=self.vec, top=50)
+        expl = explain_weights(self.clf, vec=self.vec, top=100)
+                               # feature_re='^dmoz_')
         fweights = expl.targets[0].feature_weights
         for fw_lst in [fweights.pos, fweights.neg]:
             for fw in fw_lst:
@@ -114,19 +138,43 @@ class DefaultModel(BaseModel):
                     fw.feature = fw.feature[len('text__'):]
                 elif fw.feature.startswith('url__'):
                     fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
+                elif fw.feature.startswith('dmoz__dmoz_'):
+                    fw.feature = 'dmoz: {}'.format(fw.feature[len('dmoz__dmoz_'):])
         return expl
 
     def get_params(self):
         return {
             'text_vec_attrs': get_attributes(self.text_vec),
             'url_vec_attrs': get_attributes(self.url_vec),
+            'dmoz_vec_attrs': get_attributes(self.dmoz_vec),
             'clf_attrs': get_attributes(self.clf),
         }
 
-    def set_params(self, *, text_vec_attrs, url_vec_attrs, clf_attrs):
+    def set_params(self, *,
+                   text_vec_attrs, url_vec_attrs, clf_attrs, dmoz_vec_attrs):
         set_attributes(self.text_vec, text_vec_attrs)
         set_attributes(self.url_vec, url_vec_attrs)
+        set_attributes(self.dmoz_vec, dmoz_vec_attrs)
         set_attributes(self.clf, clf_attrs)
+
+
+class PrefixDictVectorizer(DictVectorizer):
+    def __init__(self, prefix, **kwargs):
+        self.prefix = prefix
+        super().__init__(**kwargs)
+
+    def fit(self, X, y=None):
+        return super().fit(self.with_prefix(X), y=y)
+
+    def fit_transform(self, X, y=None):
+        return super().fit_transform(self.with_prefix(X), y=y)
+
+    def transform(self, X, y=None):
+        return super().transform(self.with_prefix(X), y=y)
+
+    def with_prefix(self, xs):
+        return [{k: v for k, v in item.items() if k.startswith(self.prefix)}
+                for item in xs]
 
 
 class LDAModel(BaseModel):
