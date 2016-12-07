@@ -24,8 +24,9 @@ def main():
         with multiprocessing.Pool() as pool:
             for text_item in pool.imap_unordered(
                     partial(text_worker, html_field=args.html_field), f):
-                outf.write(json.dumps(text_item))
-                outf.write('\n')
+                if text_item is not None:
+                    outf.write(json.dumps(text_item))
+                    outf.write('\n')
 
 
 def text_worker(item, html_field):
@@ -34,7 +35,7 @@ def text_worker(item, html_field):
     try:
         text = html_text.extract_text(html)
     except UnicodeEncodeError:
-        text = html
+        return None
     text_item = {'text': text}
     if url is not None:
         text_item['url'] = url
