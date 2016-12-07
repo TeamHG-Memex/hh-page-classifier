@@ -428,18 +428,21 @@ def format_mean_and_std(values):
 def get_eli5_weights(model: BaseModel):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
-    weights_explanation = model.explain_weights()
-    logging.info(format_as_text(weights_explanation, show=fields.WEIGHTS))
-    weights = weights_explanation.targets[0].feature_weights
-    weight_range = get_weight_range(weights)
-    for w_lst in [weights.pos, weights.neg]:
-        w_lst[:] = [{
-            'feature': fw.feature,
-            'weight': fw.weight,
-            'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
-        } for fw in w_lst]
-    weights.neg.reverse()
-    return format_as_dict(weights)
+    expl = model.explain_weights()
+    logging.info(format_as_text(expl, show=fields.WEIGHTS))
+    if expl.targets:
+        weights = expl.targets[0].feature_weights
+        weight_range = get_weight_range(weights)
+        for w_lst in [weights.pos, weights.neg]:
+            w_lst[:] = [{
+                'feature': fw.feature,
+                'weight': fw.weight,
+                'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
+            } for fw in w_lst]
+        weights.neg.reverse()
+        return format_as_dict(weights)
+    else:
+        return {}  # TODO
 
 
 TOOLTIPS = {
