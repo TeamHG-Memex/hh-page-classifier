@@ -17,7 +17,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 import tldextract
 
 from .utils import decode_object, encode_object
-from .model import BaseModel, DefaultModel, LDAModel
+from .model import BaseModel, DefaultModel
 
 
 ERROR = 'Error'
@@ -490,7 +490,6 @@ def main():
         message['pages'],
         skip_eli5=args.easy,
         skip_serialization_check=args.easy,
-       #model_cls=LDAModel,
         **model_kwargs,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
