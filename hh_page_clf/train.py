@@ -84,6 +84,9 @@ def train_model(docs: List[Dict],
     logging.info('Extracting text')
     add_extracted_text(all_xs)
 
+    logging.info('Pre-loading models')
+    model_cls(**model_kwargs)
+
     logging.info('Training and evaluating model')
     folds = build_folds(all_xs, all_ys, advice)
     model, metrics = train_and_evaluate(

@@ -9,6 +9,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 from sklearn.preprocessing import FunctionTransformer
+from xgboost import XGBClassifier
 
 
 class BaseModel:
@@ -49,6 +50,7 @@ class DefaultModel(BaseModel):
         'logcv': lambda: LogisticRegressionCV(random_state=42),
         'extra_tree': lambda : ExtraTreesClassifier(
             n_estimators=100, random_state=42),
+        'xgboost': lambda : XGBClassifier(),
     }
     default_clf_kind = 'logcv'
 
@@ -70,7 +72,9 @@ class DefaultModel(BaseModel):
         else:
             self.url_vec = None
         if use_lda:
-            self.lda = joblib.load('lda-15k.joblib')
+            self.lda = load_trained_model(
+                'lda', lambda: joblib.load('lda-15k.joblib'))
+            # self.lda = joblib.load('dmoz-lda-limit10k.joblib')
             # TODO - proper feature names
             vectorizers.append(
                 ('lda', FunctionTransformer(
@@ -83,13 +87,15 @@ class DefaultModel(BaseModel):
             if use_dmoz_fasttext:
                 import fasttext
                 self.dmoz_clf = 'fasttext'
-                self.dmoz_model = fasttext.load_model(
-                    'dmoz-ng1-mc10-mcl100.model.bin.bin')
+                self.dmoz_model = load_trained_model(
+                    'dmoz_fasttext', lambda: fasttext.load_model(
+                        'dmoz-ng1-mc10-mcl100.model.bin.bin'))
             else:
                 import pickle
                 self.dmoz_clf = 'sklearn'
-                with open('dmoz_sklearn.pkl', 'rb') as f:
-                    self.dmoz_model = pickle.load(f)
+                self.dmoz_model = load_trained_model(
+                    'dmoz_sklearn', lambda: pickle.load(
+                        open('dmoz_sklearn_full.pkl', 'rb')))
             # TODO - get rid of self.preprocess, do it in vectorizer
             self.dmoz_vec = PrefixDictVectorizer('dmoz')
             vectorizers.append(('dmoz', self.dmoz_vec))
@@ -121,10 +127,12 @@ class DefaultModel(BaseModel):
 
     def preprocess(self, xs):
         if self.dmoz_vec:
+            n_top = 10
+
             if self.dmoz_clf == 'fasttext':
                 from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
                 for item, probs in zip(xs, self.dmoz_model.predict_proba([
-                        to_single_line(x['text']) for x in xs], k=50)):
+                        to_single_line(x['text']) for x in xs], k=n_top)):
                     for label, prob in probs:
                         label = 'dmoz_{}'.format(label[len('__label__'):])
                         item[label] = 100 * prob
@@ -135,7 +143,7 @@ class DefaultModel(BaseModel):
                             [x['text'] for x in xs])):
                     label_probs = list(zip(self.dmoz_model['labels'], probs))
                     label_probs.sort(key=lambda x: x[1], reverse=True)
-                    for label, prob in label_probs[:50]:
+                    for label, prob in label_probs[:n_top]:
                         item['dmoz_{}'.format(label)] = 100 * prob
 
         return xs
@@ -247,3 +255,12 @@ def get_tfidf_attributes(obj):
 def set_ifidf_attributes(obj, attributes):
     obj._tfidf._idf_diag = attributes['_idf_diag']
     obj.vocabulary_ = attributes['vocabulary_']
+
+
+_trained_models_cache = {}
+
+
+def load_trained_model(name, fn):
+    if name not in _trained_models_cache:
+        _trained_models_cache[name] = fn()
+    return _trained_models_cache[name]
