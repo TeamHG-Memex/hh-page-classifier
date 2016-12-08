@@ -52,8 +52,12 @@ class DefaultModel(BaseModel):
     }
     default_clf_kind = 'logcv'
 
-    def __init__(self, use_url=True, use_text=True,
-                 use_lda=False, use_dmoz=True,
+    def __init__(self,
+                 use_url=True,
+                 use_text=True,
+                 use_lda=False,
+                 use_dmoz_fasttext=False,
+                 use_dmoz_sklearn=True,
                  clf_kind=default_clf_kind):
         vectorizers = []
         if use_url:
@@ -74,9 +78,18 @@ class DefaultModel(BaseModel):
                         [x['text'].lower() for x in xs]),
                     validate=False,
                 )))
-        if use_dmoz:
-            import fasttext
-            self.dmoz = fasttext.load_model('dmoz-ng1-mc10-mcl100.model.bin.bin')
+        if use_dmoz_fasttext or use_dmoz_sklearn:
+            assert not (use_dmoz_fasttext and use_dmoz_sklearn)
+            if use_dmoz_fasttext:
+                import fasttext
+                self.dmoz_clf = 'fasttext'
+                self.dmoz_model = fasttext.load_model(
+                    'dmoz-ng1-mc10-mcl100.model.bin.bin')
+            else:
+                import pickle
+                self.dmoz_clf = 'sklearn'
+                with open('dmoz_sklearn.pkl', 'rb') as f:
+                    self.dmoz_model = pickle.load(f)
             # TODO - get rid of self.preprocess, do it in vectorizer
             self.dmoz_vec = PrefixDictVectorizer('dmoz')
             vectorizers.append(('dmoz', self.dmoz_vec))
@@ -91,8 +104,13 @@ class DefaultModel(BaseModel):
         self.vec = FeatureUnion(vectorizers)
         self.clf = self.clf_kinds[clf_kind]()
         self.pipeline = make_pipeline(self.vec, self.clf)
-        super().__init__(use_url=use_url, use_lda=use_lda, use_dmoz=use_dmoz,
-                         clf_kind=clf_kind)
+        super().__init__(use_url=use_url,
+                         use_text=use_text,
+                         use_lda=use_lda,
+                         use_dmoz_fasttext=use_dmoz_fasttext,
+                         use_dmoz_sklearn=use_dmoz_sklearn,
+                         clf_kind=clf_kind,
+                         )
 
     def text_preprocessor(self, item):
         return self.default_text_preprocessor(item['text'])
@@ -103,12 +121,23 @@ class DefaultModel(BaseModel):
 
     def preprocess(self, xs):
         if self.dmoz_vec:
-            from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
-            for item, probs in zip(xs, self.dmoz.predict_proba([
-                    to_single_line(x['text']) for x in xs], k=10)):
-                for label, prob in probs:
-                    label = 'dmoz_{}'.format(label[len('__label__'):])
-                    item[label] = 100 * prob
+            if self.dmoz_clf == 'fasttext':
+                from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
+                for item, probs in zip(xs, self.dmoz_model.predict_proba([
+                        to_single_line(x['text']) for x in xs], k=50)):
+                    for label, prob in probs:
+                        label = 'dmoz_{}'.format(label[len('__label__'):])
+                        item[label] = 100 * prob
+
+            elif self.dmoz_clf == 'sklearn':
+                for item, probs in zip(
+                        xs, self.dmoz_model['pipeline'].predict_proba(
+                            [x['text'] for x in xs])):
+                    label_probs = list(zip(self.dmoz_model['labels'], probs))
+                    label_probs.sort(key=lambda x: x[1], reverse=True)
+                    for label, prob in label_probs[:50]:
+                        item['dmoz_{}'.format(label)] = 100 * prob
+
         return xs
 
     def fit(self, xs, ys):
