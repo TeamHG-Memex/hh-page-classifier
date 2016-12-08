@@ -158,7 +158,10 @@ class DefaultModel(BaseModel):
     def fit(self, xs, ys):
         xs = self.preprocess(xs)
         if self.text_vec:
-            vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+            vec = TfidfVectorizer(
+                preprocessor=self.text_preprocessor,
+                stop_words='english',
+            )
             transformed = vec.fit_transform(xs)
             feature_selection_clf = SGDClassifier(
                 loss='log', penalty='l2', n_iter=50, random_state=42)
