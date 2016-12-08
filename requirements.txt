@@ -9,3 +9,4 @@ scipy==0.18.1
 tldextract==2.0.2
 tqdm==4.10.0
 ujson==1.35
+xgboost==0.6a2
