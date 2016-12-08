@@ -17,12 +17,18 @@ class Spider(scrapy.Spider):
         self.token = token
         with gzip.open(pages, 'rt') as f:
             pages = json.load(f)['pages']
-            self.start_urls = [self.api_url(page['url']) for page in pages]
+            self.start_urls = list(filter(None, (
+                self.api_url(page['url']) for page in pages)))
         super().__init__()
 
     def api_url(self, page_url):
-        return self.base_api_url + urlencode(
-            {'url': page_url, 'token': self.token})
+        if '.onion' in page_url:
+            return None
+        return self.base_api_url + urlencode({
+            'url': page_url,
+            'token': self.token,
+            'fallback': 'article',
+        })
 
     def parse(self, response):
         return json.loads(response.text)
