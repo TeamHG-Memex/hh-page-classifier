@@ -18,6 +18,7 @@ setup(
         'tldextract',
         'tqdm',
         'ujson',
+        'xgboost>=0.6a2',
     ],
     entry_points={
         'console_scripts': [
