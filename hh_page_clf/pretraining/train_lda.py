@@ -1,4 +1,6 @@
 import argparse
+from itertools import islice
+
 
 import json_lines
 from sklearn.feature_extraction.text import CountVectorizer
@@ -21,7 +23,7 @@ def LDAPageVctorizer(n_topics: int, batch_size: int, min_df: int, verbose=1,
         batch_size=batch_size,
         evaluate_every=2,
         verbose=verbose,
-        n_jobs=-1,
+        n_jobs=16,
     )
     return make_pipeline(vec, lda)
 
@@ -36,7 +38,8 @@ def _iter_text(path):
             yield item['text']
 
 
-def train(input_jlgz, n_topics=50, batch_size=1024, min_df=4, max_features=None):
+def train(input_jlgz, n_topics=50, batch_size=1024, min_df=4,
+          limit=None, max_features=None):
     lda_pipe = LDAPageVctorizer(
         n_topics=n_topics,
         batch_size=batch_size,
@@ -44,7 +47,10 @@ def train(input_jlgz, n_topics=50, batch_size=1024, min_df=4, max_features=None)
         verbose=1,
         max_features=max_features or None,
     )
-    lda_pipe.fit(tqdm(_iter_text(input_jlgz), desc='Loading text'))
+    data = _iter_text(input_jlgz)
+    if limit:
+        data = islice(data, limit)
+    lda_pipe.fit(tqdm(data, desc='Loading text'))
     for name, step in lda_pipe.steps:
         step.verbose = False
     return lda_pipe
@@ -57,11 +63,13 @@ def main():
     arg('output', help='Output LDA model in joblib format')
     arg('--n-topics', type=int, default=50)
     arg('--max-features', type=int, default=100000)
+    arg('--limit', type=int, help='limit to first N pages')
     args = parser.parse_args()
 
     pipe = train(
         args.input,
         n_topics=args.n_topics,
         max_features=args.max_features,
+        limit=args.limit,
     )
     joblib.dump(pipe, args.output, compress=3)
