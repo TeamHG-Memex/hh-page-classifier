@@ -9,7 +9,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
-from sklearn.preprocessing import FunctionTransformer
 from xgboost import XGBClassifier
 
 
@@ -74,15 +73,9 @@ class DefaultModel(BaseModel):
         else:
             self.url_vec = None
         if use_lda:
-            self.lda = load_trained_model(
-                'lda', lambda: joblib.load('dmoz-lda-limit10k.joblib'))
-            # TODO - proper feature names
-            vectorizers.append(
-                ('lda', FunctionTransformer(
-                    func=lambda xs: self.lda.transform(
-                        [x['text'].lower() for x in xs]),
-                    validate=False,
-                )))
+            lda = load_trained_model(
+                'lda', lambda: joblib.load('dmoz-lda-limit100k.joblib'))
+            vectorizers.append(('lda', LDATransformer(lda)))
         if use_dmoz_fasttext or use_dmoz_sklearn:
             assert not (use_dmoz_fasttext and use_dmoz_sklearn)
             if use_dmoz_fasttext:
@@ -231,9 +224,9 @@ class PrefixDictVectorizer(DictVectorizer):
                 for item in xs]
 
 
-class CSCTransformer(TransformerMixin):
+class StatelessTransformer(TransformerMixin):
     def transform(self, X, y=None, **fit_params):
-        return X.tocsc()
+        raise NotImplementedError
 
     def fit_transform(self, X, y=None, **fit_params):
         self.fit(X, y, **fit_params)
@@ -244,6 +237,24 @@ class CSCTransformer(TransformerMixin):
 
     def get_params(self, deep=True):
         return {}
+
+
+class CSCTransformer(StatelessTransformer):
+    def transform(self, X, y=None, **fit_params):
+        return X.tocsc()
+
+
+class LDATransformer(StatelessTransformer):
+    def __init__(self, lda):
+        self.lda = lda
+        super().__init__()
+
+    def transform(self, X, y=None, **fit_params):
+        return self.lda.transform([x['text'].lower() for x in X])
+
+    def get_feature_names(self):
+        n_topics = self.lda.steps[-1][1].n_topics
+        return [str(i + 1) for i in range(n_topics)]
 
 
 skip_attributes = {'feature_importances_'}
