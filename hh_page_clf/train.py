@@ -474,7 +474,8 @@ def main():
     arg = parser.add_argument
     arg('message_filename')
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
-    arg('--easy', action='store_true', help='skip serialization checks and eli5')
+    arg('--no-dump', action='store_true', help='skip serialization checks')
+    arg('--no-eli5', action='store_true', help='skip eli5')
 
     args = parser.parse_args()
     opener = gzip.open if args.message_filename.endswith('.gz') else open
@@ -488,8 +489,8 @@ def main():
         model_kwargs['clf_kind'] = args.clf
     result = train_model(
         message['pages'],
-        skip_eli5=args.easy,
-        skip_serialization_check=args.easy,
+        skip_eli5=args.no_eli5,
+        skip_serialization_check=args.no_dump,
         **model_kwargs,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
