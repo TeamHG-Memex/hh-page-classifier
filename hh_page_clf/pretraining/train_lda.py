@@ -23,7 +23,7 @@ def LDAPageVctorizer(n_topics: int, batch_size: int, min_df: int, verbose=1,
         batch_size=batch_size,
         evaluate_every=2,
         verbose=verbose,
-        n_jobs=16,
+        n_jobs=1,
     )
     return make_pipeline(vec, lda)
 

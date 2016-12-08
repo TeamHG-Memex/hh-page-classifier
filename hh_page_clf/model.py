@@ -2,6 +2,7 @@ from typing import Dict, Any
 
 from eli5.sklearn.explain_weights import explain_weights
 import numpy as np
+from sklearn.base import TransformerMixin
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -50,7 +51,7 @@ class DefaultModel(BaseModel):
         'logcv': lambda: LogisticRegressionCV(random_state=42),
         'extra_tree': lambda : ExtraTreesClassifier(
             n_estimators=100, random_state=42),
-        'xgboost': lambda : XGBClassifier(),
+        'xgboost': lambda : XGBClassifier(max_depth=2),
     }
     default_clf_kind = 'logcv'
 
@@ -108,8 +109,14 @@ class DefaultModel(BaseModel):
         else:
             self.text_vec = None
         self.vec = FeatureUnion(vectorizers)
+        pipeline = [self.vec]
+        if clf_kind == 'xgboost':
+            # Work around xgboost issue:
+            # https://github.com/dmlc/xgboost/issues/1238#issuecomment-243872543
+            pipeline.append(CSCTransformer())
         self.clf = self.clf_kinds[clf_kind]()
-        self.pipeline = make_pipeline(self.vec, self.clf)
+        pipeline.append(self.clf)
+        self.pipeline = make_pipeline(*pipeline)
         super().__init__(use_url=use_url,
                          use_text=use_text,
                          use_lda=use_lda,
@@ -219,6 +226,21 @@ class PrefixDictVectorizer(DictVectorizer):
     def with_prefix(self, xs):
         return [{k: v for k, v in item.items() if k.startswith(self.prefix)}
                 for item in xs]
+
+
+class CSCTransformer(TransformerMixin):
+    def transform(self, X, y=None, **fit_params):
+        return X.tocsc()
+
+    def fit_transform(self, X, y=None, **fit_params):
+        self.fit(X, y, **fit_params)
+        return self.transform(X)
+
+    def fit(self, X, y=None, **fit_params):
+        return self
+
+    def get_params(self, deep=True):
+        return {}
 
 
 skip_attributes = {'feature_importances_'}
