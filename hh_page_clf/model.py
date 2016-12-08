@@ -103,12 +103,27 @@ class DefaultModel(BaseModel):
 
     def preprocess(self, xs):
         if self.dmoz_vec:
-            from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
-            for item, probs in zip(xs, self.dmoz.predict_proba([
-                    to_single_line(x['text']) for x in xs], k=10)):
-                for label, prob in probs:
-                    label = 'dmoz_{}'.format(label[len('__label__'):])
-                    item[label] = 100 * prob
+           #from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
+           #for item, probs in zip(xs, self.dmoz.predict_proba([
+           #        to_single_line(x['text']) for x in xs], k=10)):
+           #    for label, prob in probs:
+           #        label = 'dmoz_{}'.format(label[len('__label__'):])
+           #        item[label] = 100 * prob
+            import json_lines
+            with json_lines.open('diffbot.jl') as f:
+                by_url = {item['request']['pageUrl']: item for item in f
+                          if 'request' in item}
+            with_labels = 0
+            for x in xs:
+                item = by_url.get(x['url'])
+                any_labels = False
+                if item and item.get('objects'):
+                    for obj in item['objects']:
+                        for tag in obj.get('tags', []):
+                            x['dmoz_{}'.format(tag['label'])] = tag['score']
+                            any_labels = True
+                with_labels += any_labels
+            print('{} with labels out of {}'.format(with_labels, len(xs)))
         return xs
 
     def fit(self, xs, ys):
