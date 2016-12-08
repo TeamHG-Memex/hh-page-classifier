@@ -59,8 +59,9 @@ class DefaultModel(BaseModel):
                  use_text=True,
                  use_lda=False,
                  use_dmoz_fasttext=False,
-                 use_dmoz_sklearn=True,
-                 clf_kind=default_clf_kind):
+                 use_dmoz_sklearn=False,
+                 clf_kind=None):
+        clf_kind = clf_kind or self.default_clf_kind
         vectorizers = []
         if use_url:
             self.url_vec = TfidfVectorizer(
@@ -73,8 +74,7 @@ class DefaultModel(BaseModel):
             self.url_vec = None
         if use_lda:
             self.lda = load_trained_model(
-                'lda', lambda: joblib.load('lda-15k.joblib'))
-            # self.lda = joblib.load('dmoz-lda-limit10k.joblib')
+                'lda', lambda: joblib.load('dmoz-lda-limit10k.joblib'))
             # TODO - proper feature names
             vectorizers.append(
                 ('lda', FunctionTransformer(

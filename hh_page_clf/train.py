@@ -479,22 +479,25 @@ def main():
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
-
+    arg('--lda', action='store_true')
+    arg('--dmoz-fasttext', action='store_true')
+    arg('--dmoz-sklearn', action='store_true')
     args = parser.parse_args()
+
     opener = gzip.open if args.message_filename.endswith('.gz') else open
     with opener(args.message_filename, 'rt') as f:
         logging.info('Decoding message')
         message = json.load(f)
     logging.info('Done, starting train_model')
     t0 = time.time()
-    model_kwargs = {}
-    if args.clf is not None:
-        model_kwargs['clf_kind'] = args.clf
     result = train_model(
         message['pages'],
         skip_eli5=args.no_eli5,
         skip_serialization_check=args.no_dump,
-        **model_kwargs,
+        use_lda=args.lda,
+        use_dmoz_fasttext=args.dmoz_fasttext,
+        use_dmoz_sklearn=args.dmoz_sklearn,
+        clf_kind=args.clf,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
