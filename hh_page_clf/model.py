@@ -46,6 +46,7 @@ class BaseModel:
 
 
 class DefaultModel(BaseModel):
+    # TODO - remove
     clf_kinds = {
         'logcv': lambda: LogisticRegressionCV(random_state=42),
         'extra_tree': lambda : ExtraTreesClassifier(
@@ -61,55 +62,54 @@ class DefaultModel(BaseModel):
                  use_dmoz_fasttext=False,
                  use_dmoz_sklearn=False,
                  clf_kind=None):
-        clf_kind = clf_kind or self.default_clf_kind
-        vectorizers = []
+        self.input_clfs = []
         if use_url:
             self.url_vec = TfidfVectorizer(
                 analyzer='char',
                 ngram_range=(3, 4),
                 preprocessor=self.url_preprocessor,
             )
-            vectorizers.append(('url', self.url_vec))
+            self.url_clf = LogisticRegressionCV()
+            self.input_clfs.append(
+                ('url', make_pipeline(self.url_vec, self.url_clf)))
         else:
-            self.url_vec = None
+            self.url_vec = self.url_clf = None
         if use_lda:
             lda = load_trained_model(
                 'lda', lambda: joblib.load('dmoz-lda-limit100k.joblib'))
-            vectorizers.append(('lda', LDATransformer(lda)))
+            self.lda_clf = XGBClassifier(max_depth=2)
+            self.input_clfs.append(
+                ('lda', make_pipeline(LDATransformer(lda), self.lda_clf)))
         if use_dmoz_fasttext or use_dmoz_sklearn:
             assert not (use_dmoz_fasttext and use_dmoz_sklearn)
             if use_dmoz_fasttext:
                 import fasttext
-                self.dmoz_clf = 'fasttext'
+                self.dmoz_clf_kind = 'fasttext'
                 self.dmoz_model = load_trained_model(
                     'dmoz_fasttext', lambda: fasttext.load_model(
                         'dmoz-ng1-mc10-mcl100.model.bin.bin'))
             else:
                 import pickle
-                self.dmoz_clf = 'sklearn'
+                self.dmoz_clf_kind = 'sklearn'
                 self.dmoz_model = load_trained_model(
                     'dmoz_sklearn', lambda: pickle.load(
                         open('dmoz_sklearn_full.pkl', 'rb')))
             # TODO - get rid of self.preprocess, do it in vectorizer
             self.dmoz_vec = PrefixDictVectorizer('dmoz')
-            vectorizers.append(('dmoz', self.dmoz_vec))
+            self.dmoz_clf = LogisticRegressionCV()
+            self.input_clfs.append(
+                ('dmoz', make_pipeline(self.dmoz_vec, self.dmoz_clf)))
         else:
-            self.dmoz_vec = None
+            self.dmoz_vec = self.dmoz_clf = None
         if use_text:
             self.default_text_preprocessor = TfidfVectorizer().build_preprocessor()
             self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
-            vectorizers.append(('text', self.text_vec))
+            self.text_clf = LogisticRegressionCV()
+            self.input_clfs.append(
+                ('text', make_pipeline(self.text_vec, self.text_clf)))
         else:
-            self.text_vec = None
-        self.vec = FeatureUnion(vectorizers)
-        pipeline = [self.vec]
-        if clf_kind == 'xgboost':
-            # Work around xgboost issue:
-            # https://github.com/dmlc/xgboost/issues/1238#issuecomment-243872543
-            pipeline.append(CSCTransformer())
-        self.clf = self.clf_kinds[clf_kind]()
-        pipeline.append(self.clf)
-        self.pipeline = make_pipeline(*pipeline)
+            self.text_vec = self.text_clf = None
+        self.output_clf = LogisticRegressionCV() #XGBClassifier(max_depth=2)
         super().__init__(use_url=use_url,
                          use_text=use_text,
                          use_lda=use_lda,
@@ -129,7 +129,7 @@ class DefaultModel(BaseModel):
         if self.dmoz_vec:
             n_top = 10
 
-            if self.dmoz_clf == 'fasttext':
+            if self.dmoz_clf_kind == 'fasttext':
                 from hh_page_clf.pretraining.dmoz_fasttext import to_single_line
                 for item, probs in zip(xs, self.dmoz_model.predict_proba([
                         to_single_line(x['text']) for x in xs], k=n_top)):
@@ -137,7 +137,7 @@ class DefaultModel(BaseModel):
                         label = 'dmoz_{}'.format(label[len('__label__'):])
                         item[label] = 100 * prob
 
-            elif self.dmoz_clf == 'sklearn':
+            elif self.dmoz_clf_kind == 'sklearn':
                 for item, probs in zip(
                         xs, self.dmoz_model['pipeline'].predict_proba(
                             [x['text'] for x in xs])):
@@ -146,10 +146,12 @@ class DefaultModel(BaseModel):
                     for label, prob in label_probs[:n_top]:
                         item['dmoz_{}'.format(label)] = 100 * prob
 
+            else:
+                raise RuntimeError
+
         return xs
 
     def fit(self, xs, ys):
-        xs = self.preprocess(xs)
         if self.text_vec:
             vec = TfidfVectorizer(
                 preprocessor=self.text_preprocessor,
@@ -164,18 +166,32 @@ class DefaultModel(BaseModel):
             # FIXME - relies on ngram_range=(1, 1)
             self.text_vec.vocabulary = [
                 w for w, idx in vec.vocabulary_.items() if idx in features]
-        self.pipeline.fit(xs, ys)
+        xs = self.preprocess(xs)
+        for _, clf in self.input_clfs:
+            clf.fit(xs, ys)
+        input_ys = self.get_input_ys(xs)
+        self.output_clf.fit(input_ys, ys)
+
+    def get_input_ys(self, xs):
+        input_ys = []
+        for _, clf in self.input_clfs:
+            input_ys.append(clf.predict_proba(xs)[:, 1])
+        return np.vstack(input_ys).T
 
     def predict(self, xs):
         xs = self.preprocess(xs)
-        return self.pipeline.predict(xs)
+        input_ys = self.get_input_ys(xs)
+        return self.output_clf.predict(input_ys)
 
     def predict_proba(self, xs):
         xs = self.preprocess(xs)
-        return self.pipeline.predict_proba(xs)
+        input_ys = self.get_input_ys(xs)
+        return self.output_clf.predict_proba(input_ys)
 
     def explain_weights(self):
-        expl = explain_weights(self.clf, vec=self.vec, top=100)
+        # TODO
+        expl = explain_weights(self.output_clf, top=100,
+                               feature_names=[name for name, _ in self.input_clfs])
         if expl.targets:
             fweights = expl.targets[0].feature_weights
             for fw_lst in [fweights.pos, fweights.neg]:
