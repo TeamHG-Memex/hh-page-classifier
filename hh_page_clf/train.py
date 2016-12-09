@@ -490,9 +490,9 @@ def main():
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
-    arg('--lda', action='store_true')
-    arg('--dmoz-fasttext', action='store_true')
-    arg('--dmoz-sklearn', action='store_true')
+    arg('--lda', help='path to LDA model (LDA is not used by default)')
+    arg('--dmoz-fasttext', help='path to dmoz fasttext model')
+    arg('--dmoz-sklearn', help='path to dmoz sklearn model in .pkl format')
     args = parser.parse_args()
 
     opener = gzip.open if args.message_filename.endswith('.gz') else open
@@ -505,9 +505,9 @@ def main():
         message['pages'],
         skip_eli5=args.no_eli5,
         skip_serialization_check=args.no_dump,
-        use_lda=args.lda,
-        use_dmoz_fasttext=args.dmoz_fasttext,
-        use_dmoz_sklearn=args.dmoz_sklearn,
+        lda=args.lda,
+        dmoz_fasttext=args.dmoz_fasttext,
+        dmoz_sklearn=args.dmoz_sklearn,
         clf_kind=args.clf,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))

@@ -19,8 +19,10 @@ class Service:
     output_topic = 'dd-modeler-output'
     max_message_size = 104857600
 
-    def __init__(self, kafka_host=None, model_cls=None, debug=False):
+    def __init__(self, kafka_host=None, model_cls=None, model_kwargs=None,
+                 debug=False):
         self.model_cls = model_cls
+        self.model_kwargs = model_kwargs or {}
         kafka_kwargs = {}
         if kafka_host is not None:
             kafka_kwargs['bootstrap_servers'] = kafka_host
@@ -96,7 +98,8 @@ class Service:
 
     def train_model(self, request: Dict) -> Dict:
         try:
-            result = train_model(request['pages'], model_cls=self.model_cls)
+            result = train_model(
+                request['pages'], model_cls=self.model_cls, **self.model_kwargs)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
             result = ModelMeta(
@@ -134,9 +137,14 @@ def main():
     arg = parser.add_argument
     arg('--kafka-host')
     arg('--debug', action='store_true')
+    arg('--lda', help='path to LDA model (LDA is not used by default)')
     args = parser.parse_args()
 
     configure_logging()
-    service = Service(kafka_host=args.kafka_host, debug=args.debug)
+    service = Service(
+        kafka_host=args.kafka_host, debug=args.debug,
+        model_kwargs={
+            'lda': args.lda,
+        })
     logging.info('Starting hh page classifier service')
     service.run()
