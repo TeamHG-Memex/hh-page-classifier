@@ -2,6 +2,7 @@ import pickle
 from typing import Dict, Any
 
 from eli5.sklearn.explain_weights import explain_weights
+from eli5.base import FeatureWeight
 import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
@@ -74,8 +75,10 @@ class DefaultModel(BaseModel):
         else:
             self.url_vec = None
         if use_lda:
-            lda = load_trained_model(
-                'lda', lambda: joblib.load('dmoz-lda-limit100k.joblib'))
+            lda = load_trained_model('lda', lambda: joblib.load(
+                # 'dmoz-lda-limit100k-topics150.joblib'
+                'dmoz-lda-limit100k.joblib'
+            ))
             vectorizers.append(('lda', LDATransformer(lda)))
         if use_dmoz_fasttext or use_dmoz_sklearn:
             assert not (use_dmoz_fasttext and use_dmoz_sklearn)
@@ -185,8 +188,15 @@ class DefaultModel(BaseModel):
                 for fw in fw_lst:
                     fw.feature = self._prettify_feature(fw.feature)
         elif expl.feature_importances:
-            for fw in expl.feature_importances:
+            importances = expl.feature_importances
+            for fw in importances:
                 fw.feature = self._prettify_feature(fw.feature)
+            is_lda_fw = lambda fw: fw.feature.startswith('lda__')
+            lda_weight = sum(fw.weight for fw in importances if is_lda_fw(fw))
+            if lda_weight > 0:
+                importances[:] = [fw for fw in importances if not is_lda_fw(fw)]
+                importances.append(FeatureWeight('LDA features', lda_weight))
+                importances.sort(key=lambda fw: fw.weight, reverse=True)
         return expl
 
     @staticmethod
