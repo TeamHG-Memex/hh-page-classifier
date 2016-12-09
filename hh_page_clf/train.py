@@ -8,6 +8,7 @@ from typing import List, Dict
 
 import attr
 from eli5.base import FeatureWeights
+from eli5.utils import max_or_0
 from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
@@ -444,8 +445,18 @@ def get_eli5_weights(model: BaseModel):
             } for fw in w_lst]
         weights.neg.reverse()
         return format_as_dict(weights)
+    elif expl.feature_importances:
+        weight_range = max_or_0(abs(fw.weight) for fw in expl.feature_importances)
+        return {
+            'pos': [{
+                'feature': fw.feature,
+                'weight': fw.weight,
+                'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
+            } for fw in expl.feature_importances],
+            'neg': [],
+        }
     else:
-        return {}  # TODO
+        return {}
 
 
 TOOLTIPS = {

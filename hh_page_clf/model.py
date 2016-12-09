@@ -183,14 +183,22 @@ class DefaultModel(BaseModel):
             fweights = expl.targets[0].feature_weights
             for fw_lst in [fweights.pos, fweights.neg]:
                 for fw in fw_lst:
-                    if fw.feature.startswith('text__'):
-                        fw.feature = fw.feature[len('text__'):]
-                    elif fw.feature.startswith('url__'):
-                        fw.feature = 'url: {}'.format(fw.feature[len('url__'):])
-                    elif fw.feature.startswith('dmoz__dmoz_'):
-                        fw.feature = 'dmoz: {}'.format(fw.feature[len('dmoz__dmoz_'):])
-        # TODO - same for feature importances
+                    fw.feature = self._prettify_feature(fw.feature)
+        elif expl.feature_importances:
+            for fw in expl.feature_importances:
+                fw.feature = self._prettify_feature(fw.feature)
         return expl
+
+    @staticmethod
+    def _prettify_feature(feature):
+        if feature.startswith('text__'):
+            return feature[len('text__'):]
+        elif feature.startswith('url__'):
+            return 'url: {}'.format(feature[len('url__'):])
+        elif feature.startswith('dmoz__dmoz_'):
+            return 'dmoz: {}'.format(feature[len('dmoz__dmoz_'):])
+        else:
+            return feature
 
     def get_params(self):
         return {
