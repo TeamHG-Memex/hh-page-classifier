@@ -1,8 +1,9 @@
+import pickle
 from typing import Dict, Any
 
 from eli5.sklearn.explain_weights import explain_weights
 import numpy as np
-from sklearn.base import TransformerMixin
+from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.externals import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -85,7 +86,6 @@ class DefaultModel(BaseModel):
                     'dmoz_fasttext', lambda: fasttext.load_model(
                         'dmoz-ng1-mc10-mcl100.model.bin.bin'))
             else:
-                import pickle
                 self.dmoz_clf = 'sklearn'
                 self.dmoz_model = load_trained_model(
                     'dmoz_sklearn', lambda: pickle.load(
@@ -102,14 +102,7 @@ class DefaultModel(BaseModel):
         else:
             self.text_vec = None
         self.vec = FeatureUnion(vectorizers)
-        pipeline = [self.vec]
-        if clf_kind == 'xgboost':
-            # Work around xgboost issue:
-            # https://github.com/dmlc/xgboost/issues/1238#issuecomment-243872543
-            pipeline.append(CSCTransformer())
         self.clf = self.clf_kinds[clf_kind]()
-        pipeline.append(self.clf)
-        self.pipeline = make_pipeline(*pipeline)
         super().__init__(use_url=use_url,
                          use_text=use_text,
                          use_lda=use_lda,
@@ -117,6 +110,16 @@ class DefaultModel(BaseModel):
                          use_dmoz_sklearn=use_dmoz_sklearn,
                          clf_kind=clf_kind,
                          )
+
+    @property
+    def pipeline(self):
+        pipeline = [self.vec]
+        if isinstance(self.clf, XGBClassifier):
+            # Work around xgboost issue:
+            # https://github.com/dmlc/xgboost/issues/1238#issuecomment-243872543
+            pipeline.append(CSCTransformer())
+        pipeline.append(self.clf)
+        return make_pipeline(*pipeline)
 
     def text_preprocessor(self, item):
         return self.default_text_preprocessor(item['text'])
@@ -199,10 +202,10 @@ class DefaultModel(BaseModel):
 
     def set_params(self, *,
                    text_vec_attrs, url_vec_attrs, clf_attrs, dmoz_vec_attrs):
-        set_attributes(self.text_vec, text_vec_attrs)
-        set_attributes(self.url_vec, url_vec_attrs)
-        set_attributes(self.dmoz_vec, dmoz_vec_attrs)
-        set_attributes(self.clf, clf_attrs)
+        set_attributes(self, 'text_vec', text_vec_attrs)
+        set_attributes(self, 'url_vec', url_vec_attrs)
+        set_attributes(self, 'dmoz_vec', dmoz_vec_attrs)
+        set_attributes(self, 'clf', clf_attrs)
 
 
 class PrefixDictVectorizer(DictVectorizer):
@@ -263,22 +266,31 @@ skip_attributes = {'feature_importances_'}
 def get_attributes(obj):
     if isinstance(obj, TfidfVectorizer):
         return get_tfidf_attributes(obj)
-    else:
+    elif isinstance(obj, XGBClassifier):
+        return pickle.dumps(obj)
+    elif isinstance(obj, BaseEstimator):
         return {attr: getattr(obj, attr) for attr in dir(obj)
                 if not attr.startswith('_') and attr.endswith('_')
                 and attr not in skip_attributes}
+    elif obj is not None:
+        raise TypeError(type(obj))
 
 
-def set_attributes(obj, attributes):
+def set_attributes(parent, field, attributes):
+    obj = getattr(parent, field)
     if isinstance(obj, TfidfVectorizer):
         set_ifidf_attributes(obj, attributes)
-    else:
+    elif isinstance(obj, XGBClassifier):
+        setattr(parent, field, pickle.loads(attributes))
+    elif isinstance(obj, BaseEstimator):
         for k, v in attributes.items():
             try:
                 setattr(obj, k, v)
             except AttributeError:
                 raise AttributeError(
                     'can\'t set attribute {} on {}'.format(k, obj))
+    elif obj is not None:
+        raise TypeError(type(obj))
 
 
 def get_tfidf_attributes(obj):
