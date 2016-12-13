@@ -89,6 +89,25 @@ if running on a different network)::
     hh-page-clf-service --kafka-host hh-kafka
 
 
+Building docker image
+---------------------
+
+Get ``random-pages.jl.gz``: a sample of a low number (say about 1k) random pages
+in the same format as input pages (with "url" and "html" fields).
+
+LDA features are not used by default, but you may build an LDA model
+(good results can be obtained with 300 topics with bigrams)::
+
+    train-lda text-items.jl.gz lda.joblib
+
+And then pass path to LDA model via ``--lda`` parameter (and corresponding
+volume command to docker or docker-compose).
+
+Model trained on dmoz pages (**TODO** - document final model parameters)
+and random pages (1k alexa top-1m sample) are available at
+``s3://darpa-memex/thh``.
+
+
 Testing
 -------
 
