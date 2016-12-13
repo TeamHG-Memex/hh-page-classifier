@@ -1,7 +1,6 @@
 import pickle
 from typing import Dict, Any
 
-from gensim.models import Doc2Vec
 from eli5.sklearn.explain_weights import explain_weights
 from eli5.base import FeatureWeight
 import numpy as np
@@ -84,6 +83,8 @@ class DefaultModel(BaseModel):
             vectorizers.append(('lda', LDATransformer(lda_model)))
 
         if doc2vec:
+            # This is experimental, not used by default.
+            from gensim.models import Doc2Vec
             doc2vec_model = load_trained_model('doc2vec', Doc2Vec.load, doc2vec)
             vectorizers.append((('doc2vec', Doc2VecTransformer(doc2vec_model))))
 
@@ -296,8 +297,9 @@ class LDATransformer(StatelessTransformer):
 
 
 class Doc2VecTransformer(StatelessTransformer):
-    def __init__(self, doc2vec: Doc2Vec):
-        self.doc2vec = doc2vec
+    def __init__(self, doc2vec):
+        from gensim.models import Doc2Vec
+        self.doc2vec = doc2vec  # type: Doc2Vec
         super().__init__()
 
     def transform(self, xs, y=None, **fit_params):
