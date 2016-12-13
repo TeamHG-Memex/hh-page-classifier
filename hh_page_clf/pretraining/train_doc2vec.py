@@ -4,13 +4,14 @@ from itertools import islice
 import re
 
 from gensim.models import Doc2Vec
-from gensim.models.doc2vec import TaggedDocument
+from gensim.models.doc2vec import TaggedDocument, FAST_VERSION
 import json_lines
 
 from hh_page_clf.utils import get_stop_words
 
 
 def train(input_jlgz, *, size, limit, min_df, max_features):
+    print('FAST_VERSION', FAST_VERSION)
     documents = Documents(input_jlgz, limit=limit)
     model = Doc2Vec(
         documents=documents,
@@ -36,12 +37,15 @@ class Documents:
     def _iter(self):
         with json_lines.open(self.input_jlgz) as f:
             for idx, item in enumerate(f):
-                tokens = [
-                    token for token in re.findall(
-                        r'(?u)\b\w\w+\b', item['text'].lower())
-                    if token not in self.stop_words]
+                tokens = tokenize(item['text'])
                 if tokens:
                     yield TaggedDocument(tokens, [idx])
+
+
+def tokenize(text):
+    stop_words = get_stop_words()
+    return [token for token in re.findall(r'(?u)\b\w\w+\b', text.lower())
+            if token not in stop_words]
 
 
 def main():

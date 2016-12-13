@@ -490,7 +490,8 @@ def main():
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
-    arg('--lda', help='path to LDA model (LDA is not used by default)')
+    arg('--lda', help='path to LDA model')
+    arg('--doc2vec', help='path to doc2vec model')
     arg('--dmoz-fasttext', help='path to dmoz fasttext model')
     arg('--dmoz-sklearn', help='path to dmoz sklearn model in .pkl format')
     args = parser.parse_args()
@@ -506,6 +507,7 @@ def main():
         skip_eli5=args.no_eli5,
         skip_serialization_check=args.no_dump,
         lda=args.lda,
+        doc2vec=args.doc2vec,
         dmoz_fasttext=args.dmoz_fasttext,
         dmoz_sklearn=args.dmoz_sklearn,
         clf_kind=args.clf,

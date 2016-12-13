@@ -1,6 +1,7 @@
 import pickle
 from typing import Dict, Any
 
+from gensim.models import Doc2Vec
 from eli5.sklearn.explain_weights import explain_weights
 from eli5.base import FeatureWeight
 import numpy as np
@@ -60,6 +61,7 @@ class DefaultModel(BaseModel):
                  use_url=True,
                  use_text=True,
                  lda=None,
+                 doc2vec=None,
                  dmoz_fasttext=None,
                  dmoz_sklearn=None,
                  clf_kind=None):
@@ -77,8 +79,12 @@ class DefaultModel(BaseModel):
             self.url_vec = None
 
         if lda:
-            lda_model = load_trained_model('lda', lambda: joblib.load(lda))
+            lda_model = load_trained_model('lda', joblib.load, lda)
             vectorizers.append(('lda', LDATransformer(lda_model)))
+
+        if doc2vec:
+            doc2vec_model = load_trained_model('doc2vec', Doc2Vec.load, doc2vec)
+            vectorizers.append((('doc2vec', Doc2VecTransformer(doc2vec_model))))
 
         if dmoz_fasttext or dmoz_sklearn:
             # This is experimental, not used by default.
@@ -87,7 +93,7 @@ class DefaultModel(BaseModel):
                 import fasttext
                 self.dmoz_clf = 'fasttext'
                 self.dmoz_model = load_trained_model(
-                    'dmoz_fasttext', lambda: fasttext.load_model(dmoz_fasttext))
+                    'dmoz_fasttext', fasttext.load_model, dmoz_fasttext)
             else:
                 self.dmoz_clf = 'sklearn'
                 self.dmoz_model = load_trained_model(
@@ -113,6 +119,7 @@ class DefaultModel(BaseModel):
             use_url=use_url,
             use_text=use_text,
             lda=lda,
+            doc2vec=doc2vec,
             dmoz_fasttext=dmoz_fasttext,
             dmoz_sklearn=dmoz_sklearn,
             clf_kind=clf_kind,
@@ -287,6 +294,21 @@ class LDATransformer(StatelessTransformer):
         return [str(i + 1) for i in range(n_topics)]
 
 
+class Doc2VecTransformer(StatelessTransformer):
+    def __init__(self, doc2vec: Doc2Vec):
+        self.doc2vec = doc2vec
+        super().__init__()
+
+    def transform(self, xs, y=None, **fit_params):
+        from hh_page_clf.pretraining.train_doc2vec import tokenize
+        return np.array([self.doc2vec.infer_vector(tokenize(x['text']))
+                         for x in xs])
+
+    def get_feature_names(self):
+        n_dim = self.doc2vec.vector_size
+        return [str(i + 1) for i in range(n_dim)]
+
+
 skip_attributes = {'feature_importances_'}
 
 
@@ -335,7 +357,7 @@ def set_ifidf_attributes(obj, attributes):
 _trained_models_cache = {}
 
 
-def load_trained_model(name, fn):
+def load_trained_model(name, fn, *args, **kwargs):
     if name not in _trained_models_cache:
-        _trained_models_cache[name] = fn()
+        _trained_models_cache[name] = fn(*args, **kwargs)
     return _trained_models_cache[name]

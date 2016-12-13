@@ -28,8 +28,14 @@ def decode_object(data: Optional[str]) -> object:
         return pickle.loads(zlib.decompress(base64.b64decode(data)))
 
 
+_stop_words = None
+
+
 def get_stop_words():
-    return set(chain.from_iterable(
-        stop_words.get_stop_words(lang)
-        for lang in stop_words.AVAILABLE_LANGUAGES
-    ))
+    global _stop_words
+    if _stop_words is None:
+        _stop_words = set(chain.from_iterable(
+            stop_words.get_stop_words(lang)
+            for lang in stop_words.AVAILABLE_LANGUAGES
+        ))
+    return _stop_words
