@@ -26,6 +26,7 @@ setup(
             'hh-page-clf-service=hh_page_clf.service:main',
             'hh-page-clf-train=hh_page_clf.train:main',
             'train-lda=hh_page_clf.pretraining.train_lda:main',
+            'train-doc2vec=hh_page_clf.pretraining.train_doc2vec:main',
             'extract-texts=hh_page_clf.pretraining.extract_texts:main',
             'dmoz-to-csv=hh_page_clf.pretraining.dmoz_reader:to_csv',
             'dmoz-to-fasttext=hh_page_clf.pretraining.dmoz_fasttext:main',

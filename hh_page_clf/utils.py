@@ -1,8 +1,11 @@
 import base64
 import logging
+from itertools import chain
 import pickle
 from typing import Optional
 import zlib
+
+import stop_words
 
 
 def configure_logging():
@@ -23,3 +26,10 @@ def encode_object(model: object) -> str:
 def decode_object(data: Optional[str]) -> object:
     if data is not None:
         return pickle.loads(zlib.decompress(base64.b64decode(data)))
+
+
+def get_stop_words():
+    return set(chain.from_iterable(
+        stop_words.get_stop_words(lang)
+        for lang in stop_words.AVAILABLE_LANGUAGES
+    ))

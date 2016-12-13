@@ -1,5 +1,5 @@
 import argparse
-from itertools import islice, chain
+from itertools import islice
 from typing import Tuple
 
 import json_lines
@@ -7,8 +7,9 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.pipeline import make_pipeline
 from sklearn.externals import joblib
-import stop_words
 from tqdm import tqdm
+
+from hh_page_clf.utils import get_stop_words
 
 
 def LDAPageVctorizer(*,
@@ -40,13 +41,6 @@ def LDAPageVctorizer(*,
 
 def _text_preprocessor(text):
     return text.lower()
-
-
-def get_stop_words():
-    return set(chain.from_iterable(
-        stop_words.get_stop_words(lang)
-        for lang in stop_words.AVAILABLE_LANGUAGES
-    ))
 
 
 def _iter_text(path):
