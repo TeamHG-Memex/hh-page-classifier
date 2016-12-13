@@ -2,7 +2,7 @@ FROM python:3.5
 
 WORKDIR /opt/hh-page-clf
 
-RUN apt-get update && apt-get install -y tree
+RUN apt-get update && apt-get install -y tree libopenblas-dev
 
 COPY requirements.txt .
 RUN pip install -U pip wheel && \
