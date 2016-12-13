@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
+from scipy.sparse import issparse
 from xgboost import XGBClassifier
 
 
@@ -278,7 +279,7 @@ class StatelessTransformer(TransformerMixin):
 
 class CSCTransformer(StatelessTransformer):
     def transform(self, xs, y=None, **fit_params):
-        return xs.tocsc()
+        return xs.tocsc() if issparse(xs) else xs
 
 
 class LDATransformer(StatelessTransformer):
