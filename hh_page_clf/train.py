@@ -68,9 +68,11 @@ def train_model(docs: List[Dict],
         return no_docs_error()
 
     all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    if not all_xs:
+        return no_labeled_error()
     n_relevant = sum(doc['relevant'] for doc in all_xs)
     if n_relevant == 0:
-        return no_relevant_error()
+        return single_class_error(False)
 
     if add_non_relevant_sample:
         n_extra_non_relevant = max(
@@ -78,6 +80,8 @@ def train_model(docs: List[Dict],
         extra_non_relevant = sample_non_relevant(n_extra_non_relevant)
         all_xs.extend(extra_non_relevant)
         docs.extend(extra_non_relevant)  # for proper report in get_meta
+    elif n_relevant == len(all_xs):
+        return single_class_error(True)
     random.shuffle(all_xs)
     all_ys = np.array([doc['relevant'] for doc in all_xs])
     advice = []
@@ -106,17 +110,29 @@ def no_docs_error():
     return ModelMeta(
         model=None,
         meta=Meta([AdviceItem(
-            ERROR, 'Can not train a model: no pages given.')]))
+            ERROR, 'Can not train a model, no pages given.')]))
 
 
-def no_relevant_error():
+def no_labeled_error():
+    return ModelMeta(
+        model=None,
+        meta=Meta([AdviceItem(
+            ERROR, 'Can not train a model, no labeled pages given.')]))
+
+
+def single_class_error(is_positive):
+    have, need = 'not ', ''
+    if is_positive:
+        have, need = need, have
     return ModelMeta(
         model=None,
         meta=Meta(
             [AdviceItem(
                 ERROR,
-                'Can not train a model, only non-relevant pages in sample: '
-                'need examples of relevant pages too.')]))
+                'Can not train a model, only {have}relevant pages in sample: '
+                'need examples of {need}relevant pages too.'.format(
+                    have=have, need=need,
+                ))]))
 
 
 def sample_non_relevant(n_pages):
@@ -150,7 +166,7 @@ def build_folds(all_xs, all_ys, advice):
     domains = [get_domain(doc['url']) for doc in all_xs]
     n_domains = len(set(domains))
     n_relevant_domains = len(
-        {domain for domain, is_relevant in zip(domains, all_ys)})
+        {domain for domain, is_relevant in zip(domains, all_ys) if is_relevant})
     n_folds = 4
     if n_relevant_domains == 1:
         advice.append(AdviceItem(
@@ -164,13 +180,15 @@ def build_folds(all_xs, all_ys, advice):
         folds = (GroupKFold(n_splits=min(n_domains, n_folds))
                  .split(all_xs, groups=domains))
 
-    if n_relevant_domains < WARN_N_RELEVANT_DOMAINS:
+    if 1 < n_relevant_domains < WARN_N_RELEVANT_DOMAINS:
         advice.append(AdviceItem(
             WARNING,
             'Low number of relevant domains (just {}) '
             'might result in model over-fitting.'.format(n_relevant_domains)
         ))
-    folds = [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
+    folds = two_class_folds(folds, all_ys)
+    if not folds:
+        folds = two_class_folds(KFold(n_splits=n_folds).split(all_xs), all_ys)
     if not folds:
         advice.append(AdviceItem(
             WARNING,
@@ -179,6 +197,10 @@ def build_folds(all_xs, all_ys, advice):
             'There are too few domains or the dataset is too unbalanced.'
         ))
     return folds
+
+
+def two_class_folds(folds, all_ys):
+    return [fold for fold in folds if len(np.unique(all_ys[fold[0]])) > 1]
 
 
 def train_and_evaluate(

@@ -17,6 +17,7 @@ class ATestModel(BaseModel):
         self.vec = CountVectorizer(preprocessor=lambda x: x['text'].lower())
         self.clf = LogisticRegression(random_state=42)
         self.pipeline = make_pipeline(self.vec, self.clf)
+        super().__init__()
 
     def get_params(self):
         return {'vec_attrs': get_attributes(self.vec),
@@ -24,8 +25,8 @@ class ATestModel(BaseModel):
                 }
 
     def set_params(self, *, vec_attrs, clf_attrs):
-        set_attributes(self.vec, vec_attrs)
-        set_attributes(self.clf, clf_attrs)
+        set_attributes(self, 'vec', vec_attrs)
+        set_attributes(self, 'clf', clf_attrs)
 
     def fit(self, xs, ys):
         self.pipeline.fit(xs, ys)
@@ -40,7 +41,11 @@ class ATestModel(BaseModel):
         return explain_weights(self.clf, vec=self.vec, top=30)
 
 
-train_model = partial(default_train_model, model_cls=ATestModel)
+train_model = partial(
+    default_train_model,
+    model_cls=ATestModel,
+    add_non_relevant_sample=False,
+)
 
 
 def lst_as_dict(lst):
@@ -76,12 +81,11 @@ def test_train_model():
         ]
     assert lst_as_dict(result.meta.description) == [
         {'heading': 'Dataset',
-         'text': '200 documents, 159 with labels (80%) across 40 domains.'},
+         'text': '200 documents, 159 labeled across 40 domains.'},
         {'heading': 'Class balance',
          'text': '33% relevant, 67% not relevant.'},
         {'heading': 'Metrics', 'text': ''},
         {'heading': 'Accuracy', 'text': '0.881 ± 0.122'},
-        {'heading': 'F1', 'text': '0.772 ± 0.279'},
         {'heading': 'ROC AUC', 'text': '0.964 ± 0.081'}]
     assert len(result.meta.weights['pos']) > 0
     assert len(result.meta.weights['neg']) > 0
@@ -93,7 +97,7 @@ def test_empty():
     result = train_model([])
     pprint(attr.asdict(result.meta))
     assert result.meta == Meta(
-        advice=[AdviceItem('Error', 'Can not train a model: no pages given.')])
+        advice=[AdviceItem('Error', 'Can not train a model, no pages given.')])
     assert result.model is None
 
 
@@ -145,55 +149,22 @@ def test_single_domain():
             for i in range(10)]
     result = train_model(docs)
     pprint(attr.asdict(result.meta))
-    assert lst_as_dict(result.meta.advice) == [
+    assert lst_as_dict(result.meta.advice)[:2] == [
         {'kind': 'Warning',
-         'text': "Only 1 domain in data means that it's impossible to do "
-                 'cross-validation across domains, and might result in '
+         'text': "Only 1 relevant domain in data means that it's impossible to do "
+                 'cross-validation across domains, and will likely result in '
                  'model over-fitting.'},
         {'kind': 'Warning',
-         'text': 'Number of labeled documents is just 10, consider having '
+         'text': 'Number of human labeled documents is just 10, consider having '
                  'at least 100 labeled.'},
-        {'kind': 'Notice',
-         'text': 'The quality of the classifier is very good, ROC AUC is '
-                 '1.00. Still, consider fixing warnings shown above.'}]
-    assert lst_as_dict(result.meta.description) == [
+    ]
+    assert lst_as_dict(result.meta.description)[:3] == [
         {'heading': 'Dataset',
-         'text': '10 documents, 10 with labels (100%) across 1 '
-                 'domain.'},
+         'text': '10 documents, 10 labeled across 1 domain.'},
         {'heading': 'Class balance',
          'text': '50% relevant, 50% not relevant.'},
         {'heading': 'Metrics', 'text': ''},
-        {'heading': 'Accuracy', 'text': '1.000 ± 0.000'},
-        {'heading': 'F1', 'text': '1.000 ± 0.000'},
-        {'heading': 'ROC AUC', 'text': '1.000 ± 0.000'}]
-    assert result.model is not None
-
-
-def test_two_domains_bad_folds():
-    docs = [{'html': 'foo{}'.format(i % 4),
-             'url': 'http://example{}.com/{}'.format(i % 2, i),
-             'relevant': i % 2 == 0}
-            for i in range(10)]
-    result = train_model(docs)
-    pprint(attr.asdict(result.meta))
-    assert lst_as_dict(result.meta.advice) == [
-        {'kind': 'Warning',
-         'text': 'Low number of domains (just 2) might result in model '
-                 'over-fitting.'},
-        {'kind': 'Warning',
-         'text': 'Can not do cross-validation, as there are no folds where '
-                 'training data has both relevant and non-relevant '
-                 'examples. There are too few domains or the dataset is '
-                 'too unbalanced.'},
-        {'kind': 'Warning',
-         'text': 'Number of labeled documents is just 10, consider having '
-                 'at least 100 labeled.'}]
-    assert lst_as_dict(result.meta.description) == [
-        {'heading': 'Dataset',
-         'text': '10 documents, 10 with labels (100%) across 2 '
-                 'domains.'},
-        {'heading': 'Class balance',
-         'text': '50% relevant, 50% not relevant.'}]
+    ]
     assert result.model is not None
 
 
@@ -206,23 +177,21 @@ def test_two_domains():
     pprint(attr.asdict(result.meta))
     assert lst_as_dict(result.meta.advice) == [
         {'kind': 'Warning',
-         'text': 'Low number of domains (just 2) might result in model '
+         'text': 'Low number of relevant domains (just 2) might result in model '
                  'over-fitting.'},
         {'kind': 'Warning',
-         'text': 'Number of labeled documents is just 10, consider having '
+         'text': 'Number of human labeled documents is just 10, consider having '
                  'at least 100 labeled.'},
         {'kind': 'Notice',
          'text': 'The quality of the classifier is very good, ROC AUC is '
                  '1.00. Still, consider fixing warnings shown above.'}]
     assert lst_as_dict(result.meta.description) == [
         {'heading': 'Dataset',
-         'text': '10 documents, 10 with labels (100%) across 2 '
-                 'domains.'},
+         'text': '10 documents, 10 labeled across 2 domains.'},
         {'heading': 'Class balance',
          'text': '40% relevant, 60% not relevant.'},
         {'heading': 'Metrics', 'text': ''},
         {'heading': 'Accuracy', 'text': '1.000 ± 0.000'},
-        {'heading': 'F1', 'text': '1.000 ± 0.000'},
         {'heading': 'ROC AUC', 'text': '1.000 ± 0.000'}]
     assert result.model is not None
 
