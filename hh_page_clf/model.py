@@ -218,9 +218,9 @@ class DefaultModel(BaseModel):
     def _prettify_feature(feature):
         for prefix, tpl in [
             ('text__', '{}'),
-            ('url__', 'url: {}'),
-            ('lda__', 'lda: {}'),
-            ('dmoz__dmoz_', 'dmoz: {}'),
+            ('url__', 'URL: {}'),
+            ('lda__', 'Topic: {}'),
+            ('dmoz__dmoz_', 'Topic: {}'),
         ]:
             if feature.startswith(prefix):
                 return tpl.format(feature[len(prefix):])
