@@ -468,14 +468,17 @@ def get_eli5_weights(model: BaseModel):
         weights.neg.reverse()
         return format_as_dict(weights)
     elif expl.feature_importances:
-        weight_range = max_or_0(abs(fw.weight) for fw in expl.feature_importances)
+        importances = expl.feature_importances.importances
+        weight_range = max_or_0(abs(fw.weight) for fw in importances)
         return {
             'pos': [{
                 'feature': fw.feature,
                 'weight': fw.weight,
                 'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
-            } for fw in expl.feature_importances],
+            } for fw in importances],
             'neg': [],
+            'pos_remaining': expl.feature_importances.remaining,
+            'neg_remaining': 0,
         }
     else:
         return {}

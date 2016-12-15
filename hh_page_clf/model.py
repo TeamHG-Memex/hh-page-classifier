@@ -206,7 +206,7 @@ class DefaultModel(BaseModel):
                 for fw in fw_lst:
                     fw.feature = self._prettify_feature(fw.feature)
         elif expl.feature_importances:
-            importances = expl.feature_importances
+            importances = expl.feature_importances.importances
             for fw in importances:
                 fw.feature = self._prettify_feature(fw.feature)
             is_lda_fw = lambda _fw: _fw.feature.startswith('lda__')
