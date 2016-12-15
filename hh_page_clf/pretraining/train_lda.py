@@ -18,15 +18,11 @@ def LDAPageVctorizer(*,
                      max_features: int,
                      max_iter: int,
                      ngram_range: Tuple[int, int],
-                     batch_size: int=1024,
+                     vocabulary=None,
+                     batch_size: int=4096,
                      verbose=1):
-    vec = CountVectorizer(
-        preprocessor=_text_preprocessor,
-        stop_words=get_stop_words(),
-        min_df=min_df,
-        max_features=max_features,
-        ngram_range=ngram_range,
-    )
+    vec = _vectorizer(min_df=min_df, max_features=max_features,
+                      ngram_range=ngram_range, vocabulary=vocabulary)
     lda = LatentDirichletAllocation(
         learning_method='online',
         n_topics=n_topics,
@@ -39,6 +35,17 @@ def LDAPageVctorizer(*,
     return make_pipeline(vec, lda)
 
 
+def _vectorizer(*, min_df, max_features, ngram_range, vocabulary=None):
+    return CountVectorizer(
+        preprocessor=_text_preprocessor,
+        stop_words=get_stop_words(),
+        min_df=min_df,
+        max_features=max_features,
+        ngram_range=ngram_range,
+        vocabulary=vocabulary,
+    )
+
+
 def _text_preprocessor(text):
     return text.lower()
 
@@ -49,8 +56,21 @@ def _iter_text(path):
             yield item['text']
 
 
+def _fit_vocab(input_jlgz, *, min_df, max_features, ngram_range, limit=None,
+               **_):
+    max_pages = 100000
+    if limit is not None and limit <= max_pages:
+        return None
+    data = islice(_iter_text(input_jlgz), max_pages)
+    vec = _vectorizer(
+        min_df=min_df, max_features=max_features, ngram_range=ngram_range)
+    vec.fit(tqdm(data, desc='Fitting vectorizer'))
+    return vec.vocabulary_
+
+
 def train(input_jlgz, limit=None, **lda_kwargs):
-    lda_pipe = LDAPageVctorizer(**lda_kwargs)
+    vocabulary = _fit_vocab(input_jlgz, limit=limit, **lda_kwargs)
+    lda_pipe = LDAPageVctorizer(vocabulary=vocabulary, **lda_kwargs)
     data = _iter_text(input_jlgz)
     if limit:
         data = islice(data, limit)
