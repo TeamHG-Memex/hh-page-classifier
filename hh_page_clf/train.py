@@ -2,7 +2,7 @@ from collections import defaultdict, namedtuple
 import gzip
 import json
 import logging
-import multiprocessing
+import multiprocessing.dummy as multiprocessing
 import random
 from statistics import mean
 import time
