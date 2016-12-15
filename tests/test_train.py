@@ -1,4 +1,5 @@
 from functools import partial
+import json
 from pprint import pprint
 
 import attr
@@ -201,6 +202,8 @@ def test_default_clf():
              'url': 'http://example{}.com'.format(i),
              'relevant': i % 2 == 0}
             for i in range(10)]
-    result = train_model(docs)
+    result = default_train_model(docs)
     assert result.model is not None
-    pprint(attr.asdict(result.meta))
+    meta = attr.asdict(result.meta)
+    pprint(meta)
+    json.dumps(meta)

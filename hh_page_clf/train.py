@@ -473,11 +473,11 @@ def get_eli5_weights(model: BaseModel):
         return {
             'pos': [{
                 'feature': fw.feature,
-                'weight': fw.weight,
+                'weight': float(fw.weight),
                 'hsl_color': format_hsl(weight_color_hsl(fw.weight, weight_range)),
             } for fw in importances],
             'neg': [],
-            'pos_remaining': expl.feature_importances.remaining,
+            'pos_remaining': int(expl.feature_importances.remaining),
             'neg_remaining': 0,
         }
     else:
