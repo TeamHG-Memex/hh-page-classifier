@@ -4,6 +4,8 @@ import json
 import logging
 import multiprocessing
 import random
+from statistics import mean
+import time
 from typing import List, Dict
 
 import attr
@@ -56,6 +58,7 @@ def train_model(docs: List[Dict],
                 skip_eli5=False,
                 skip_serialization_check=False,
                 add_non_relevant_sample=True,
+                benchmark=False,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
@@ -98,6 +101,7 @@ def train_model(docs: List[Dict],
         all_xs, all_ys, folds, model_cls, model_kwargs,
         skip_serialization_check=skip_serialization_check,
         skip_validation=skip_validation,
+        benchmark=benchmark,
     )
 
     meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
@@ -208,6 +212,7 @@ def train_and_evaluate(
         model_cls, model_kwargs,
         skip_serialization_check=False,
         skip_validation=False,
+        benchmark=False
         ):
     with multiprocessing.Pool() as pool:
         metric_futures = []
@@ -226,6 +231,8 @@ def train_and_evaluate(
             _metrics = future.get()
             for k, v in _metrics.items():
                 metrics[k].append(v)
+        if benchmark:
+            benchmark_model(model, all_xs)
     return model, metrics
 
 
@@ -500,6 +507,36 @@ TOOLTIPS = {
 }
 
 
+def benchmark_model(model, xs):
+    n_batch = 100
+    n_single = 20
+    xs = np.array(_exactly_n_items(xs, n_batch))
+    batch_time = mean(_time(model.predict_proba, xs) / n_batch
+                      for _ in range(4))
+    single_time = mean(_time(model.predict_proba, np.array([x]))
+                       for x in _exactly_n_items(xs, n_single))
+    logging.info(
+        'Prediction performance (without text extraction): '
+        '{batched:.1f} rps 100-batched, {single:.1f} rps single'
+        .format(batched=1 / batch_time, single=1 / single_time))
+
+
+def _exactly_n_items(lst, n):
+    assert len(lst) > 0
+    result = []
+    while True:
+        for x in lst:
+            result.append(x)
+            if len(result) == n:
+                return result
+
+
+def _time(fn, *args, **kwargs):
+    t0 = time.time()
+    fn(*args, **kwargs)
+    return time.time() - t0
+
+
 def main():
     import argparse
     import gzip
@@ -536,6 +573,7 @@ def main():
         dmoz_fasttext=args.dmoz_fasttext,
         dmoz_sklearn=args.dmoz_sklearn,
         clf_kind=args.clf,
+        benchmark=True,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
