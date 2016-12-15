@@ -80,13 +80,16 @@ class DefaultModel(BaseModel):
 
         if lda:
             lda_model = load_trained_model('lda', joblib.load, lda)
-            vectorizers.append(('lda', LDATransformer(lda_model)))
+            lda_feature_names = load_trained_model(
+                'lda_feature_names', get_lda_feature_names, lda_model)
+            vectorizers.append(
+                ('lda', LDATransformer(lda_model, lda_feature_names)))
 
         if doc2vec:
             # This is experimental, not used by default.
             from gensim.models import Doc2Vec
             doc2vec_model = load_trained_model('doc2vec', Doc2Vec.load, doc2vec)
-            vectorizers.append((('doc2vec', Doc2VecTransformer(doc2vec_model))))
+            vectorizers.append(('doc2vec', Doc2VecTransformer(doc2vec_model)))
 
         if dmoz_fasttext or dmoz_sklearn:
             # This is experimental, not used by default.
@@ -209,24 +212,19 @@ class DefaultModel(BaseModel):
             importances = expl.feature_importances.importances
             for fw in importances:
                 fw.feature = self._prettify_feature(fw.feature)
-            is_lda_fw = lambda _fw: _fw.feature.startswith('lda__')
-            lda_weight = sum(fw.weight for fw in importances if is_lda_fw(fw))
-            if lda_weight > 0:
-                importances[:] = [fw for fw in importances if not is_lda_fw(fw)]
-                importances.append(FeatureWeight('LDA features', lda_weight))
-                importances.sort(key=lambda _fw: _fw.weight, reverse=True)
         return expl
 
     @staticmethod
     def _prettify_feature(feature):
-        if feature.startswith('text__'):
-            return feature[len('text__'):]
-        elif feature.startswith('url__'):
-            return 'url: {}'.format(feature[len('url__'):])
-        elif feature.startswith('dmoz__dmoz_'):
-            return 'dmoz: {}'.format(feature[len('dmoz__dmoz_'):])
-        else:
-            return feature
+        for prefix, tpl in [
+            ('text__', '{}'),
+            ('url__', 'url: {}'),
+            ('lda__', 'lda: {}'),
+            ('dmoz__dmoz_', 'dmoz: {}'),
+        ]:
+            if feature.startswith(prefix):
+                return tpl.format(feature[len(prefix):])
+        return feature
 
     def get_params(self):
         return {
@@ -284,16 +282,31 @@ class CSCTransformer(StatelessTransformer):
 
 
 class LDATransformer(StatelessTransformer):
-    def __init__(self, lda):
-        self.lda = lda
+    def __init__(self, lda_pipeline, feature_names):
+        self.lda = lda_pipeline
+        self.feature_names = feature_names
         super().__init__()
 
     def transform(self, xs, y=None, **fit_params):
         return self.lda.transform([x['text'].lower() for x in xs])
 
     def get_feature_names(self):
-        n_topics = self.lda.steps[-1][1].n_topics
-        return [str(i + 1) for i in range(n_topics)]
+        return self.feature_names
+
+
+def get_lda_feature_names(lda_pipeline):
+    (_, vec), (_, lda) = lda_pipeline.steps
+    vec_feature_names = vec.get_feature_names()
+    return [', '.join(vec_feature_names[idx] for idx in topic_indices)
+            for topic_indices in top_indices(lda, top=3)]
+
+
+def top_indices(lda, top):
+    dim = lda.components_.shape[0]
+    indices = np.argpartition(lda.components_, -top, axis=1)[:, -top:]
+    row_indices = np.tile(np.arange(dim), [top, 1]).T
+    values = lda.components_[row_indices, indices]
+    return indices[row_indices, np.argsort(-values)]
 
 
 class Doc2VecTransformer(StatelessTransformer):
