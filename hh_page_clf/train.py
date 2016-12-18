@@ -2,7 +2,7 @@ from collections import defaultdict, namedtuple
 import gzip
 import json
 import logging
-import multiprocessing.dummy as multiprocessing
+import multiprocessing.pool
 import random
 from statistics import mean
 import time
@@ -158,7 +158,7 @@ def doc_is_extra_sampled(doc):
 
 
 def add_extracted_text(xs):
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.pool.Pool() as pool:
         for doc, text in zip(
                 xs,
                 pool.map(html_text.extract_text, [doc['html'] for doc in xs],
@@ -214,7 +214,7 @@ def train_and_evaluate(
         skip_validation=False,
         benchmark=False
         ):
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.pool.ThreadPool(processes=len(folds)) as pool:
         metric_futures = []
         if folds and not skip_validation:
             metric_futures = [

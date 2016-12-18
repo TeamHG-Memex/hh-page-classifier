@@ -2,7 +2,6 @@ import pickle
 from typing import Dict, Any
 
 from eli5.sklearn.explain_weights import explain_weights
-from eli5.base import FeatureWeight
 import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
