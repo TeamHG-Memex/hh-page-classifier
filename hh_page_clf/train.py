@@ -552,6 +552,8 @@ def main():
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
+    arg('--no-sample', action='store_true',
+        help='do not add random non-relevant sample')
     arg('--lda', help='path to LDA model')
     arg('--doc2vec', help='path to doc2vec model')
     arg('--dmoz-fasttext', help='path to dmoz fasttext model')
@@ -573,6 +575,7 @@ def main():
         dmoz_fasttext=args.dmoz_fasttext,
         dmoz_sklearn=args.dmoz_sklearn,
         clf_kind=args.clf,
+        add_non_relevant_sample=not args.no_sample,
         benchmark=True,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
