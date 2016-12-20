@@ -1,8 +1,8 @@
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 import gzip
 import json
 import logging
-import multiprocessing.pool
+from multiprocessing.pool import Pool, ThreadPool
 import random
 from statistics import mean
 import time
@@ -48,7 +48,11 @@ class Meta:
     tooltips = attr.ib(default=None)  # type: Dict[str, str]
 
 
-ModelMeta = namedtuple('ModelMeta', 'model, meta')
+@attr.s
+class ModelMeta:
+    model = attr.ib()
+    meta = attr.ib()  # type: Meta
+    metrics = attr.ib(default=None)
 
 
 def train_model(docs: List[Dict],
@@ -105,9 +109,9 @@ def train_model(docs: List[Dict],
     )
 
     meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
-    log_meta(meta)
+    logging.info('Model meta:\n{}'.format(meta_repr(meta)))
 
-    return ModelMeta(model=model, meta=meta)
+    return ModelMeta(model=model, meta=meta, metrics=metrics)
 
 
 def no_docs_error():
@@ -158,7 +162,7 @@ def doc_is_extra_sampled(doc):
 
 
 def add_extracted_text(xs):
-    with multiprocessing.pool.Pool() as pool:
+    with Pool() as pool:
         for doc, text in zip(
                 xs,
                 pool.map(html_text.extract_text, [doc['html'] for doc in xs],
@@ -214,7 +218,7 @@ def train_and_evaluate(
         skip_validation=False,
         benchmark=False
         ):
-    with multiprocessing.pool.ThreadPool(processes=len(folds)) as pool:
+    with ThreadPool(processes=len(folds)) as pool:
         metric_futures = []
         if folds and not skip_validation:
             metric_futures = [
@@ -236,13 +240,13 @@ def train_and_evaluate(
     return model, metrics
 
 
-def log_meta(meta):
+def meta_repr(meta):
     meta_repr = []
     for item in meta.advice:
         meta_repr.append('{:<20} {}'.format(item.kind + ':', item.text))
     for item in meta.description:
         meta_repr.append('{:<20} {}'.format(item.heading + ':', item.text))
-    logging.info('Model meta:\n{}'.format('\n'.join(meta_repr)))
+    return '\n'.join(meta_repr)
 
 
 def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
@@ -537,31 +541,9 @@ def _time(fn, *args, **kwargs):
     return time.time() - t0
 
 
-def main():
-    import argparse
-    import gzip
-    import json
-    import time
-    from .utils import configure_logging
-
-    configure_logging()
-
-    parser = argparse.ArgumentParser()
-    arg = parser.add_argument
-    arg('message_filename')
-    arg('--clf', choices=sorted(DefaultModel.clf_kinds))
-    arg('--no-dump', action='store_true', help='skip serialization checks')
-    arg('--no-eli5', action='store_true', help='skip eli5')
-    arg('--no-sample', action='store_true',
-        help='do not add random non-relevant sample')
-    arg('--lda', help='path to LDA model')
-    arg('--doc2vec', help='path to doc2vec model')
-    arg('--dmoz-fasttext', help='path to dmoz fasttext model')
-    arg('--dmoz-sklearn', help='path to dmoz sklearn model in .pkl format')
-    args = parser.parse_args()
-
-    opener = gzip.open if args.message_filename.endswith('.gz') else open
-    with opener(args.message_filename, 'rt') as f:
+def train_model_cli(message_filename, args):
+    opener = gzip.open if message_filename.endswith('.gz') else open
+    with opener(message_filename, 'rt') as f:
         logging.info('Decoding message')
         message = json.load(f)
     logging.info('Done, starting train_model')
@@ -581,3 +563,46 @@ def main():
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
         'Model size: {:,} bytes'.format(len(encode_object(result.model))))
+    return result
+
+
+def main():
+    import argparse
+    import gzip
+    import json
+    import time
+    from .utils import configure_logging
+
+    configure_logging()
+
+    parser = argparse.ArgumentParser()
+    arg = parser.add_argument
+    arg('message_filenames', nargs='+')
+    arg('--clf', choices=sorted(DefaultModel.clf_kinds))
+    arg('--no-dump', action='store_true', help='skip serialization checks')
+    arg('--no-eli5', action='store_true', help='skip eli5')
+    arg('--no-sample', action='store_true',
+        help='do not add random non-relevant sample')
+    arg('--lda', help='path to LDA model')
+    arg('--doc2vec', help='path to doc2vec model')
+    arg('--dmoz-fasttext', help='path to dmoz fasttext model')
+    arg('--dmoz-sklearn', help='path to dmoz sklearn model in .pkl format')
+    args = parser.parse_args()
+
+    train_results = [
+        train_model_cli(filename, args) for filename in args.message_filenames]
+    if len(train_results) > 1:
+        for filename, result in zip(args.message_filenames, train_results):
+            print('\nResults for {}'.format(filename))
+            print(meta_repr(result.meta))
+
+        from scipy.stats.mstats import gmean
+        print()
+        metric = 'ROC AUC'
+        for kind in ['all', 'human']:
+            logging.info('gmean {metric} of "{kind}" runs: {gmean:.3f}'.format(
+                metric=metric,
+                kind=kind,
+                gmean=gmean([np.mean([run[kind] for run in res.metrics[metric]])
+                             for res in train_results]),
+            ))
