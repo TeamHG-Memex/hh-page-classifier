@@ -1,3 +1,4 @@
+import argparse
 from collections import defaultdict
 import gzip
 import json
@@ -19,7 +20,7 @@ from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score
 import tldextract
 
-from .utils import decode_object, encode_object
+from .utils import decode_object, encode_object, configure_logging
 from .model import BaseModel, DefaultModel
 
 
@@ -559,6 +560,7 @@ def train_model_cli(message_filename, args):
         clf_kind=args.clf,
         add_non_relevant_sample=not args.no_sample,
         benchmark=True,
+        skip_validation=args.no_validation,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
@@ -567,12 +569,6 @@ def train_model_cli(message_filename, args):
 
 
 def main():
-    import argparse
-    import gzip
-    import json
-    import time
-    from .utils import configure_logging
-
     configure_logging()
 
     parser = argparse.ArgumentParser()
@@ -583,6 +579,7 @@ def main():
     arg('--no-eli5', action='store_true', help='skip eli5')
     arg('--no-sample', action='store_true',
         help='do not add random non-relevant sample')
+    arg('--no-validation', action='store_true', help='skip validation')
     arg('--lda', help='path to LDA model')
     arg('--doc2vec', help='path to doc2vec model')
     arg('--dmoz-fasttext', help='path to dmoz fasttext model')
