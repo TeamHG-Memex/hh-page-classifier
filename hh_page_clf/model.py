@@ -6,12 +6,14 @@ import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.externals import joblib
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 from scipy.sparse import issparse
 from xgboost import XGBClassifier
+
+from .utils import get_stop_words
 
 
 class BaseModel:
@@ -68,7 +70,8 @@ class DefaultModel(BaseModel):
         vectorizers = []
 
         if use_url:
-            self.url_vec = TfidfVectorizer(
+            self.url_vec = CountVectorizer(
+                binary=True,
                 analyzer='char',
                 ngram_range=(3, 4),
                 preprocessor=self.url_preprocessor,
@@ -111,8 +114,11 @@ class DefaultModel(BaseModel):
 
         if use_text:
             self.default_text_preprocessor = (
-                TfidfVectorizer().build_preprocessor())
-            self.text_vec = TfidfVectorizer(preprocessor=self.text_preprocessor)
+                CountVectorizer().build_preprocessor())
+            self.text_vec = CountVectorizer(
+                binary=True,
+                preprocessor=self.text_preprocessor,
+            )
             vectorizers.append(('text', self.text_vec))
         else:
             self.text_vec = None
@@ -182,7 +188,9 @@ class DefaultModel(BaseModel):
 
     def _select_text_features(self, xs, ys):
         vec = TfidfVectorizer(
-            preprocessor=self.text_preprocessor, stop_words='english')
+            preprocessor=self.text_preprocessor,
+            stop_words=get_stop_words(),
+        )
         transformed = vec.fit_transform(xs)
         feature_selection_clf = SGDClassifier(
             loss='log', penalty='l2', n_iter=50, random_state=42)
