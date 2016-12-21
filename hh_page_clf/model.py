@@ -52,7 +52,7 @@ class DefaultModel(BaseModel):
         'logcv': lambda: LogisticRegressionCV(random_state=42),
         'extra_tree': lambda: ExtraTreesClassifier(
             n_estimators=100, random_state=42),
-        'xgboost': lambda: XGBClassifier(max_depth=2),
+        'xgboost': lambda: XGBClassifier(max_depth=2, missing=0),
     }
     default_clf_kind = 'xgboost'
 
