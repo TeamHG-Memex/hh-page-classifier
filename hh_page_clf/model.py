@@ -81,7 +81,7 @@ class DefaultModel(BaseModel):
             self.url_vec = None
 
         if lda:
-            lda_model = load_trained_model('lda', joblib.load, lda)
+            lda_model = load_trained_model('lda', load_joblib_or_pickle, lda)
             lda_feature_names = load_trained_model(
                 'lda_feature_names', get_lda_feature_names, lda_model)
             vectorizers.append(
@@ -384,3 +384,11 @@ def load_trained_model(name, fn, *args, **kwargs):
     if name not in _trained_models_cache:
         _trained_models_cache[name] = fn(*args, **kwargs)
     return _trained_models_cache[name]
+
+
+def load_joblib_or_pickle(filename):
+    if filename.endswith('joblib'):
+        return joblib.load(filename)
+    else:
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
