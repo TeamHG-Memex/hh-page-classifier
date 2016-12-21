@@ -84,8 +84,8 @@ class DefaultModel(BaseModel):
             lda_model = load_trained_model('lda', load_joblib_or_pickle, lda)
             lda_feature_names = load_trained_model(
                 'lda_feature_names', get_lda_feature_names, lda_model)
-            vectorizers.append(
-                ('lda', LDATransformer(lda_model, lda_feature_names, top=3)))
+            vectorizers.append(('lda', LDATransformer(
+                lda_model, lda_feature_names, top=3, binary=True)))
 
         if doc2vec:
             # This is experimental, not used by default.
@@ -289,18 +289,21 @@ class CSCTransformer(StatelessTransformer):
 
 
 class LDATransformer(StatelessTransformer):
-    def __init__(self, lda_pipeline, feature_names, top=None):
+    def __init__(self, lda_pipeline, feature_names, top=None, binary=False):
         self.lda = lda_pipeline
         self.feature_names = feature_names
         self.top = top
+        self.binary = binary
         super().__init__()
 
     def transform(self, xs, y=None, **fit_params):
         output = self.lda.transform([x['text'].lower() for x in xs])
         if self.top:
-            for row_idx, not_top in enumerate(
-                    np.argpartition(output, -self.top, axis=1)[:, :-self.top]):
-                output[row_idx, not_top] = 0
+            for row_idx, row_indices in enumerate(
+                    np.argpartition(output, -self.top, axis=1)):
+                output[row_idx, row_indices[:-self.top]] = 0
+                if self.binary:
+                    output[row_idx, row_indices[-self.top:]] = 1
         return output
 
     def get_feature_names(self):
