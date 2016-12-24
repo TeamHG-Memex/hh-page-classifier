@@ -1,6 +1,7 @@
 import argparse
 from collections import defaultdict
 import gzip
+from itertools import islice
 import json
 import logging
 from multiprocessing.pool import Pool, ThreadPool
@@ -14,6 +15,7 @@ from eli5.base import FeatureWeights
 from eli5.utils import max_or_0
 from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
+import json_lines
 import html_text
 import numpy as np
 from sklearn.model_selection import GroupKFold, KFold
@@ -75,42 +77,49 @@ def train_model(docs: List[Dict],
     if not docs:
         return no_docs_error()
 
-    all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    if not all_xs:
+    human_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    if not human_xs:
         return no_labeled_error()
-    n_relevant = sum(doc['relevant'] for doc in all_xs)
+    n_relevant = sum(doc['relevant'] for doc in human_xs)
     if n_relevant == 0:
         return single_class_error(False)
 
-    if add_non_relevant_sample:
-        n_extra_non_relevant = max(
-            0, n_relevant / target_relevant_ratio - len(all_xs))
-        extra_non_relevant = sample_non_relevant(n_extra_non_relevant)
-        all_xs.extend(extra_non_relevant)
-        docs.extend(extra_non_relevant)  # for proper report in get_meta
-    elif n_relevant == len(all_xs):
-        return single_class_error(True)
-    random.shuffle(all_xs)
-    all_ys = np.array([doc['relevant'] for doc in all_xs])
-    advice = []
+    model = None
+    for _ in range(5 if add_non_relevant_sample else 1):
 
-    logging.info('Extracting text')
-    add_extracted_text(all_xs)
+        if add_non_relevant_sample:
+            n_extra_non_relevant = max(
+                0, int(n_relevant / target_relevant_ratio - len(human_xs)))
+            extra_non_relevant = sample_non_relevant(
+                n_extra_non_relevant, model)
+            all_xs = human_xs + extra_non_relevant
+            all_docs = docs + extra_non_relevant  # for full report in get_meta
+        elif n_relevant == len(human_xs):
+            return single_class_error(True)
+        else:
+            all_xs = human_xs
+            all_docs = docs
+        random.shuffle(all_xs)
+        all_ys = np.array([doc['relevant'] for doc in all_xs])
+        advice = []
 
-    logging.info('Pre-loading models')
-    model_cls(**model_kwargs)
+        logging.info('Extracting text')
+        add_extracted_text(all_xs)
 
-    logging.info('Training and evaluating model')
-    folds = build_folds(all_xs, all_ys, advice)
-    model, metrics = train_and_evaluate(
-        all_xs, all_ys, folds, model_cls, model_kwargs,
-        skip_serialization_check=skip_serialization_check,
-        skip_validation=skip_validation,
-        benchmark=benchmark,
-    )
+        logging.info('Pre-loading models')
+        model_cls(**model_kwargs)
 
-    meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
-    logging.info('Model meta:\n{}'.format(meta_repr(meta)))
+        logging.info('Training and evaluating model')
+        folds = build_folds(all_xs, all_ys, advice)
+        model, metrics = train_and_evaluate(
+            all_xs, all_ys, folds, model_cls, model_kwargs,
+            skip_serialization_check=skip_serialization_check,
+            skip_validation=skip_validation,
+            benchmark=benchmark,
+        )
+
+        meta = get_meta(model, metrics, advice, all_docs, skip_eli5=skip_eli5)
+        logging.info('Model meta:\n{}'.format(meta_repr(meta)))
 
     return ModelMeta(model=model, meta=meta, metrics=metrics)
 
@@ -144,17 +153,22 @@ def single_class_error(is_positive):
                 ))]))
 
 
-def sample_non_relevant(n_pages):
-    pages = []
-    with gzip.open('random-pages.jl.gz', 'rt') as f:
-        for line in f:
-            if len(pages) >= n_pages:
-                break
-            page = json.loads(line)
-            pages.append({
-                'url': page['url'], 'html': page['text'],
-                'relevant': False, 'extra_non_relevant': True,
-            })
+def sample_non_relevant(n_pages: int, model:BaseModel=None):
+    with json_lines.open('random-pages.jl.gz', 'rt') as f:
+        items = iter(f)
+        if model is None:
+            items = islice(items, n_pages)
+        pages = [{'url': page['url'], 'text': page['text'],
+                  'relevant': False, 'extra_non_relevant': True,
+                  } for page in items]
+    if model is not None:
+        logging.info('Selecting non relevant pages with highest scores')
+        ys = model.predict_proba(pages)[:, 1]
+        indexed_pages = list(enumerate(pages))
+        indexed_pages = sorted(indexed_pages, key=lambda x: ys[x[0]])
+        pages = [p for _, p in indexed_pages[-n_pages:]]
+        logging.info('Non relevant pages scores from {:.2f} to {:.2f}'.format(
+            ys[indexed_pages[-n_pages][0]], ys[indexed_pages[-1][0]]))
     return pages
 
 
@@ -162,11 +176,12 @@ def doc_is_extra_sampled(doc):
     return doc.get('extra_non_relevant')
 
 
-def add_extracted_text(xs):
+def add_extracted_text(docs):
     with Pool() as pool:
+        docs = [doc for doc in docs if 'text' not in doc]
         for doc, text in zip(
-                xs,
-                pool.map(html_text.extract_text, [doc['html'] for doc in xs],
+                docs,
+                pool.map(html_text.extract_text, [doc['html'] for doc in docs],
                          chunksize=100)):
             doc['text'] = text
 
