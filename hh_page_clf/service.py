@@ -137,14 +137,16 @@ def main():
     arg = parser.add_argument
     arg('--kafka-host')
     arg('--debug', action='store_true')
+    arg('--random-pages', help='path to random negative pages (.jl.gz)')
     arg('--lda', help='path to LDA model (LDA is not used by default)')
     args = parser.parse_args()
 
     configure_logging()
     service = Service(
         kafka_host=args.kafka_host, debug=args.debug,
-        model_kwargs={
-            'lda': args.lda,
-        })
+        model_kwargs=dict(
+            random_pages=args.random_pages,
+            lda=args.lda,
+        ))
     logging.info('Starting hh page classifier service')
     service.run()

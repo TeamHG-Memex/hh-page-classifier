@@ -62,8 +62,8 @@ def train_model(docs: List[Dict],
                 skip_validation=False,
                 skip_eli5=False,
                 skip_serialization_check=False,
-                add_non_relevant_sample=True,
                 benchmark=False,
+                random_pages=None,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
@@ -82,10 +82,11 @@ def train_model(docs: List[Dict],
     if n_relevant == 0:
         return single_class_error(False)
 
-    if add_non_relevant_sample:
+    if random_pages:
         n_extra_non_relevant = max(
             0, n_relevant / target_relevant_ratio - len(all_xs))
-        extra_non_relevant = sample_non_relevant(n_extra_non_relevant)
+        extra_non_relevant = sample_non_relevant(
+            random_pages, n_extra_non_relevant)
         all_xs.extend(extra_non_relevant)
         docs.extend(extra_non_relevant)  # for proper report in get_meta
     elif n_relevant == len(all_xs):
@@ -144,9 +145,9 @@ def single_class_error(is_positive):
                 ))]))
 
 
-def sample_non_relevant(n_pages):
+def sample_non_relevant(random_pages_path: str, n_pages: int) -> List[Dict]:
     pages = []
-    with gzip.open('random-pages.jl.gz', 'rt') as f:
+    with gzip.open(random_pages_path, 'rt') as f:
         for line in f:
             if len(pages) >= n_pages:
                 break
@@ -558,7 +559,7 @@ def train_model_cli(message_filename, args):
         dmoz_fasttext=args.dmoz_fasttext,
         dmoz_sklearn=args.dmoz_sklearn,
         clf_kind=args.clf,
-        add_non_relevant_sample=not args.no_sample,
+        random_pages=args.random_pages,
         benchmark=True,
         skip_validation=args.no_validation,
     )
@@ -577,9 +578,9 @@ def main():
     arg('--clf', choices=sorted(DefaultModel.clf_kinds))
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
-    arg('--no-sample', action='store_true',
-        help='do not add random non-relevant sample')
     arg('--no-validation', action='store_true', help='skip validation')
+    arg('--random-pages', help='path to random negative pages',
+        default='random-pages.jl.gz')
     arg('--lda', help='path to LDA model')
     arg('--doc2vec', help='path to doc2vec model')
     arg('--dmoz-fasttext', help='path to dmoz fasttext model')
