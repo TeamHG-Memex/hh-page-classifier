@@ -107,6 +107,9 @@ with 300 topics with bigrams)::
 
     train-lda text-items.jl.gz lda.joblib
 
+For faster loading, it is recommended to re-dump the model with pickle
+(joblib can load pickled data as well).
+
 
 Building docker image
 ---------------------
