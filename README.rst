@@ -135,5 +135,9 @@ Run tests::
 
     py.test --doctest-modules \
         --cov=hh_page_clf --cov-report=term --cov-report=html \
+        --ignore=hh_page_clf/pretraining \
         tests hh_page_clf
+
+Cleaning Kafka queues at the start of tests/test_service.py can
+*sometimes* hang - just try once again.
 

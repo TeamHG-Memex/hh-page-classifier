@@ -42,11 +42,7 @@ class ATestModel(BaseModel):
         return explain_weights(self.clf, vec=self.vec, top=30)
 
 
-train_model = partial(
-    default_train_model,
-    model_cls=ATestModel,
-    add_non_relevant_sample=False,
-)
+train_model = partial(default_train_model, model_cls=ATestModel)
 
 
 def lst_as_dict(lst):
