@@ -58,19 +58,17 @@ def test_training():
         ]
     }
 
-    def _test(request):
-        train_response = next(consumer).value
+    def _test(train_response):
         model = decode_object(train_response.pop('model'))  # type: BaseModel
         pprint(train_response)
         pprint(json.loads(train_response['quality']))
 
-        assert train_response['id'] == request['id']
-
-        page_neg, page_pos = request['pages'][:2]
+        page_neg, page_pos = train_request['pages'][:2]
         pred_proba = lambda page: \
             model.predict_proba([{'text': extract_text(page['html'])}])[0][1]
         assert pred_proba(page_pos) > 0.5
         assert pred_proba(page_neg) < 0.5
+        return train_response
 
     try:
         request_1 = dict(train_request, id='some id 1')
@@ -79,8 +77,8 @@ def test_training():
         producer.send(ATestService.input_topic, request_1)
         producer.send(ATestService.input_topic, request_2)
         producer.flush()
-        _test(request_1)
-        _test(request_2)
+        r1, r2 = _test(next(consumer).value), _test(next(consumer).value)
+        assert {r['id'] for r in [r1, r2]} == {'some id 1', 'some id 2'}
         producer.send(ATestService.input_topic, request_1)
         producer.flush()
         producer.send(ATestService.input_topic, request_1)
@@ -88,10 +86,10 @@ def test_training():
         producer.send(ATestService.input_topic, request_2)
         producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
         producer.flush()
-        _test(request_1)
-        _test(request_2)
-        error_response = next(consumer).value
-        assert error_response['id'] == '3'
+        responses = [next(consumer).value for _ in range(3)]
+        assert ({r['id'] for r in responses if r['id'] != '3'} ==
+                {'some id 1', 'some id 2'})
+        error_response = [r for r in responses if r['id'] == '3'][0]
         assert 'Error' in error_response['quality']
         assert "'bool' object has no attribute 'get'" in error_response['quality']
     finally:
