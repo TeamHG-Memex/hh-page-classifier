@@ -45,7 +45,7 @@ def test_training():
         ATestService.output_topic,
         value_deserializer=decode_message)
     service = ATestService(model_cls=ATestModel, debug=False)
-    service_thread = threading.Thread(target=service.run)
+    service_thread = threading.Thread(target=service.run_loop)
     service_thread.start()
     train_request = {
         'pages': [

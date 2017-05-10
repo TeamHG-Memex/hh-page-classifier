@@ -1,10 +1,12 @@
 import argparse
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError
 import gzip
 import hashlib
 import logging
 import json
 from pprint import pformat
-from typing import Dict, List, Tuple
+from typing import Dict, Optional
 
 import attr
 from kafka import KafkaConsumer, KafkaProducer
@@ -35,40 +37,37 @@ class Service:
             max_request_size=self.max_message_size,
             **kafka_kwargs)
         self.debug = debug
-        self.stop_marker = object()
+        self.stop_marker = {'stop_marker': True}  # checked only for identity
 
-    def run(self) -> None:
+    def run_loop(self) -> None:
         """ Listen to messages with data to train on, and return trained models
         with a report on model quality.
         If several messages with the same id arrive, result of only the last one
         will be sent back.
+        This method loops until self.stop_marker is received (sent only from tests).
         """
-        to_send = []  # type: List[Tuple[str, Dict]]
-        while True:
-            requests = {}  # type: Dict[str, ConsumerRecord]
-            order = {}  # type: Dict[str, int]
-            for idx, message in enumerate(self.consumer):
-                value = self.extract_value(message)
-                if value is self.stop_marker:
-                    return
-                elif value is not None:
-                    id_ = value['id']
-                    requests[id_] = value
-                    order[id_] = idx
-            self.consumer.commit()
-            for id_, result in to_send:
-                if id_ in requests:
-                    logging.info(
-                        'Dropping result for id "{}", as new request arrived'
-                        .format(id_))
-                else:
-                    self.send_result(result)
-            # Ordering is important only to simplify testing.
-            to_send = [(id_, self.train_model(request))
-                       for id_, request in sorted(requests.items(),
-                                                  key=lambda x: order[x[0]])]
+        jobs = OrderedDict()  # type: Dict[str, Future]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            while True:
+                for message in self.consumer:
+                    value = self.extract_value(message)
+                    if value is self.stop_marker:
+                        return
+                    elif value is not None:
+                        id_ = value['id']
+                        if id_ in jobs:
+                            jobs[id_].cancel()
+                        jobs[id_] = pool.submit(self.train_model, value)
+                self.consumer.commit()
+                for id_, future in jobs.items():
+                    try:
+                        result = future.result(timeout=0)
+                    except TimeoutError:
+                        pass
+                    else:
+                        self.send_result(result)
 
-    def extract_value(self, message):
+    def extract_value(self, message: ConsumerRecord) -> Optional[Dict]:
         self._debug_save_message(message.value, 'incoming')
         try:
             value = json.loads(message.value.decode('utf8'))
@@ -76,7 +75,7 @@ class Service:
             logging.error('Error decoding message: {}'
                           .format(repr(message.value)),
                           exc_info=e)
-            return
+            return None
         if value == {'from-tests': 'stop'}:
             logging.info('Got message to stop (from tests)')
             return self.stop_marker
@@ -95,6 +94,7 @@ class Service:
             logging.error(
                 'Dropping a message without "pages" or "id" key: {}'
                 .format(pformat(value)))
+            return None
 
     def train_model(self, request: Dict) -> Dict:
         try:
@@ -149,4 +149,4 @@ def main():
             lda=args.lda,
         ))
     logging.info('Starting hh page classifier service')
-    service.run()
+    service.run_loop()
