@@ -6,7 +6,7 @@ import hashlib
 import logging
 import json
 from pprint import pformat
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import attr
 from kafka import KafkaConsumer, KafkaProducer
@@ -37,21 +37,20 @@ class Service:
             max_request_size=self.max_message_size,
             **kafka_kwargs)
         self.debug = debug
-        self.stop_marker = {'stop_marker': True}  # checked only for identity
 
     def run_loop(self) -> None:
         """ Listen to messages with data to train on, and return trained models
         with a report on model quality.
         If several messages with the same id arrive, result of only the last one
         will be sent back.
-        This method loops until self.stop_marker is received (sent only from tests).
+        This method loops until a message to stop is received (sent only from tests).
         """
         jobs = OrderedDict()  # type: Dict[str, Future]
         with ThreadPoolExecutor(max_workers=4) as pool:
             while True:
                 for message in self.consumer:
-                    value = self.extract_value(message)
-                    if value is self.stop_marker:
+                    value, should_stop = self.extract_value(message)
+                    if should_stop:
                         return
                     elif value is not None:
                         id_ = value['id']
@@ -67,7 +66,7 @@ class Service:
                     else:
                         self.send_result(result)
 
-    def extract_value(self, message: ConsumerRecord) -> Optional[Dict]:
+    def extract_value(self, message: ConsumerRecord) -> Tuple[Optional[Dict], bool]:
         self._debug_save_message(message.value, 'incoming')
         try:
             value = json.loads(message.value.decode('utf8'))
@@ -75,10 +74,10 @@ class Service:
             logging.error('Error decoding message: {}'
                           .format(repr(message.value)),
                           exc_info=e)
-            return None
+            return None, False
         if value == {'from-tests': 'stop'}:
             logging.info('Got message to stop (from tests)')
-            return self.stop_marker
+            return None, True
         elif isinstance(value.get('pages'), list) and value.get('id'):
             logging.info(
                 'Got training task with {pages} pages, id "{id}", '
@@ -89,12 +88,12 @@ class Service:
                     checksum=message.checksum,
                     offset=message.offset,
                 ))
-            return value
+            return value, False
         else:
             logging.error(
                 'Dropping a message without "pages" or "id" key: {}'
                 .format(pformat(value)))
-            return None
+            return None, False
 
     def train_model(self, request: Dict) -> Dict:
         try:
