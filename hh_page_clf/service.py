@@ -58,6 +58,7 @@ class Service:
                             jobs[id_].cancel()
                         jobs[id_] = pool.submit(self.train_model, value)
                 self.consumer.commit()
+                sent = []
                 for id_, future in jobs.items():
                     try:
                         result = future.result(timeout=0)
@@ -65,6 +66,9 @@ class Service:
                         pass
                     else:
                         self.send_result(result)
+                        sent.append(id_)
+                for id_ in sent:
+                    del jobs[id_]
 
     def extract_value(self, message: ConsumerRecord) -> Tuple[Optional[Dict], bool]:
         self._debug_save_message(message.value, 'incoming')

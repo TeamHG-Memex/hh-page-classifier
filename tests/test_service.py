@@ -77,8 +77,10 @@ def test_training():
         producer.send(ATestService.input_topic, request_1)
         producer.send(ATestService.input_topic, request_2)
         producer.flush()
-        r1, r2 = _test(next(consumer).value), _test(next(consumer).value)
-        assert {r['id'] for r in [r1, r2]} == {'some id 1', 'some id 2'}
+        responses = get_responses(consumer)
+        for r in responses:
+            _test(r)
+        assert {r['id'] for r in responses} == {'some id 1', 'some id 2'}
         producer.send(ATestService.input_topic, request_1)
         producer.flush()
         producer.send(ATestService.input_topic, request_1)
@@ -86,7 +88,7 @@ def test_training():
         producer.send(ATestService.input_topic, request_2)
         producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
         producer.flush()
-        responses = [next(consumer).value for _ in range(3)]
+        responses = get_responses(consumer)
         assert ({r['id'] for r in responses if r['id'] != '3'} ==
                 {'some id 1', 'some id 2'})
         error_response = [r for r in responses if r['id'] == '3'][0]
@@ -96,6 +98,17 @@ def test_training():
         producer.send(ATestService.input_topic, {'from-tests': 'stop'})
         producer.flush()
         service_thread.join()
+
+
+def get_responses(consumer: KafkaConsumer, timeout_ms=1000):
+    values = []
+    while True:
+        new_values = [r.value for v in consumer.poll(timeout_ms=timeout_ms).values()
+                      for r in v]
+        if values and not new_values:
+            break
+        values.extend(new_values)
+    return values
 
 
 Point = namedtuple('Point', 'x, y')
