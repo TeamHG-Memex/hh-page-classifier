@@ -30,6 +30,7 @@ class Service:
             kafka_kwargs['bootstrap_servers'] = kafka_host
         self.consumer = KafkaConsumer(
             self.input_topic,
+            group_id='{}-group'.format(self.input_topic),
             max_partition_fetch_bytes=self.max_message_size,
             consumer_timeout_ms=10,
             **kafka_kwargs)
