@@ -127,11 +127,11 @@ Accuracy testing
 If you have some datasets in json format (they may be gzipped), you can check
 accuracy, eli5 work and serialization by running::
 
-    hh-page-clf-train my-dataset.json.gz
+    hh-page-clf-train my-dataset.json.gz --lda lda.pkl
 
 or even run on several datasets and see an aggregate accuracy report::
 
-    hh-page-clf-train datasets/*.json.gz
+    hh-page-clf-train datasets/*.json.gz --lda lda.pkl
 
 
 Testing
