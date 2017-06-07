@@ -10,7 +10,7 @@ setup(
         'attrs',
         'eli5>=0.3',
         'html-text',
-        'json_lines==0.2.0',
+        'json_lines>=0.2.0',
         'kafka-python==1.3.3',
         'numpy',
         'scikit-learn>=0.18<0.19',
