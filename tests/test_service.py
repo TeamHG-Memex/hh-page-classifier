@@ -8,7 +8,7 @@ from typing import Dict
 from html_text import extract_text
 from kafka import KafkaConsumer, KafkaProducer
 
-from hh_page_clf.model import BaseModel
+from hh_page_clf.models import BaseModel
 from hh_page_clf.service import Service
 from hh_page_clf.utils import configure_logging, decode_object, encode_object
 from .test_train import ATestModel

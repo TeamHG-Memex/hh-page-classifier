@@ -9,7 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 
-from hh_page_clf.model import BaseModel, get_attributes, set_attributes
+from hh_page_clf.models import BaseModel, get_attributes, set_attributes
 from hh_page_clf.train import train_model as default_train_model, Meta, AdviceItem
 
 

@@ -115,10 +115,7 @@ class DefaultModel(BaseModel):
         if use_text:
             self.default_text_preprocessor = (
                 CountVectorizer().build_preprocessor())
-            self.text_vec = CountVectorizer(
-                binary=True,
-                preprocessor=self.text_preprocessor,
-            )
+            self.text_vec = self.text_vec()
             vectorizers.append(('text', self.text_vec))
         else:
             self.text_vec = None
@@ -134,6 +131,9 @@ class DefaultModel(BaseModel):
             dmoz_sklearn=dmoz_sklearn,
             clf_kind=clf_kind,
         )
+
+    def text_vec(self):
+        return CountVectorizer(binary=True, preprocessor=self.text_preprocessor)
 
     @property
     def pipeline(self):
@@ -247,6 +247,25 @@ class DefaultModel(BaseModel):
         set_attributes(self, 'url_vec', url_vec_attrs)
         set_attributes(self, 'dmoz_vec', dmoz_vec_attrs)
         set_attributes(self, 'clf', clf_attrs)
+
+
+class CharModel(DefaultModel):
+    default_clf_kind = 'logcv'
+    clf_kinds = {
+        'logcv': lambda: LogisticRegressionCV(random_state=42),
+    }
+
+    def text_vec(self):
+        return CountVectorizer(
+            analyzer='char', ngram_range=(2, 4),
+            preprocessor=self.text_preprocessor,
+            max_features=50000,
+        )
+
+    def fit(self, xs, ys):
+        # do not select text features, use logistic regression instead
+        xs = self.preprocess(xs)
+        self.pipeline.fit(xs, ys)
 
 
 class PrefixDictVectorizer(DictVectorizer):

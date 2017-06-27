@@ -20,8 +20,9 @@ from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score
 import tldextract
 
+from . import models
+from .models import BaseModel
 from .utils import decode_object, encode_object, configure_logging
-from .model import BaseModel, DefaultModel
 
 
 ERROR = 'Error'
@@ -70,7 +71,7 @@ def train_model(docs: List[Dict],
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
-    model_cls = model_cls or DefaultModel
+    model_cls = model_cls or models.DefaultModel
 
     if not docs:
         return no_docs_error()
@@ -562,6 +563,7 @@ def train_model_cli(message_filename, args):
         random_pages=args.random_pages,
         benchmark=True,
         skip_validation=args.no_validation,
+        model_cls=getattr(models, args.model) if args.model else None,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
@@ -575,7 +577,8 @@ def main():
     parser = argparse.ArgumentParser()
     arg = parser.add_argument
     arg('message_filenames', nargs='+')
-    arg('--clf', choices=sorted(DefaultModel.clf_kinds))
+    arg('--clf', choices=sorted(models.DefaultModel.clf_kinds))
+    arg('--model', choices=['DefaultModel', 'CharModel'])
     arg('--no-dump', action='store_true', help='skip serialization checks')
     arg('--no-eli5', action='store_true', help='skip eli5')
     arg('--no-validation', action='store_true', help='skip validation')
