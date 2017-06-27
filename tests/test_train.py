@@ -4,12 +4,15 @@ from pprint import pprint
 
 import attr
 from eli5.sklearn.explain_weights import explain_weights
+import pytest
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.pipeline import make_pipeline
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 
-from hh_page_clf.models import BaseModel, get_attributes, set_attributes
+from hh_page_clf.models import (
+    BaseModel, get_attributes, set_attributes, DefaultModel, CharModel,
+)
 from hh_page_clf.train import train_model as default_train_model, Meta, AdviceItem
 
 
@@ -193,12 +196,13 @@ def test_two_domains():
     assert result.model is not None
 
 
-def test_default_clf():
+@pytest.mark.parametrize(['model_cls'], [[None], [DefaultModel], [CharModel]])
+def test_default_clf(model_cls):
     docs = [{'html': 'foo{} bar'.format(i % 4),
              'url': 'http://example{}.com'.format(i),
              'relevant': i % 2 == 0}
             for i in range(10)]
-    result = default_train_model(docs)
+    result = default_train_model(docs, model_cls=model_cls)
     assert result.model is not None
     meta = attr.asdict(result.meta)
     pprint(meta)
