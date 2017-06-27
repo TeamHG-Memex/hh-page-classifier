@@ -180,7 +180,7 @@ def add_extracted_text(xs):
                 doc['language'] = None
 
 
-def select_model(xs):
+def select_model(xs, ngram_docs_threshold=0.2):
     lang_counts = dict(Counter(x['language'] for x in xs))
     lang_freqs = {lang: count / len(xs) for lang, count in lang_counts.items()}
     # https://en.wikipedia.org/wiki/Category:Writing_systems_without_word_boundaries
@@ -188,7 +188,10 @@ def select_model(xs):
     need_ngrams = {'my', 'zh-cn', 'zh-tw', 'ja', 'km', 'lo', 'za', 'th', 'bo'}
     need_ngrams_freq = sum(freq for lang, freq in lang_freqs.items()
                            if lang in need_ngrams)
-    model = models.CharModel if need_ngrams_freq > 0.1 else models.DefaultModel
+    if need_ngrams_freq > ngram_docs_threshold:
+        model = models.CharModel
+    else:
+        model = models.DefaultModel
     logging.info('{:.0%} documents need char ngrams, using {}'
                  .format(need_ngrams_freq, model.__name__))
     return model
