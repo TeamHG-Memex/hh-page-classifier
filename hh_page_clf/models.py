@@ -250,16 +250,20 @@ class DefaultModel(BaseModel):
 
 
 class CharModel(DefaultModel):
-    default_clf_kind = 'logcv'
+    default_clf_kind = 'sgd'
     clf_kinds = {
         'logcv': lambda: LogisticRegressionCV(random_state=42),
+        'sgd': lambda: SGDClassifier(
+            loss='log', penalty='elasticnet', n_iter=10,
+            random_state=42),
     }
 
     def text_vec(self):
         return CountVectorizer(
             analyzer='char', ngram_range=(2, 4),
+            binary=True,  # to play better with URL features
+            max_features=20000,
             preprocessor=self.text_preprocessor,
-            max_features=50000,
         )
 
     def fit(self, xs, ys):
