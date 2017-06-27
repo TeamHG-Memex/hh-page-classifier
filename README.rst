@@ -91,7 +91,9 @@ if running on a different network)::
 
 LDA model trained on 500k dmoz pages with bigrams and 100k features,
 and random pages (1k alexa top-1m sample) are available at
-``s3://darpa-memex/thh/``.
+``s3://darpa-memex/thh/``:
+`random-pages.jl.gz <https://s3-us-west-2.amazonaws.com/darpa-memex/thh/random-pages.jl.gz>`_
+and `lda.pkl <https://s3-us-west-2.amazonaws.com/darpa-memex/thh/lda.pkl>`_.
 
 Pass path to random pages via ``--random-pages`` argument, and path to LDA
 model via ``--lda`` argument.
@@ -117,6 +119,19 @@ Building docker image
 Building does not require anything special, just check out the project and run::
 
     docker build -t hh-page-clf .
+
+
+Accuracy testing
+----------------
+
+If you have some datasets in json format (they may be gzipped), you can check
+accuracy, eli5 work and serialization by running::
+
+    hh-page-clf-train my-dataset.json.gz --lda lda.pkl
+
+or even run on several datasets and see an aggregate accuracy report::
+
+    hh-page-clf-train datasets/*.json.gz --lda lda.pkl
 
 
 Testing
