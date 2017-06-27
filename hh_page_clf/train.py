@@ -1,5 +1,5 @@
 import argparse
-from collections import defaultdict
+from collections import defaultdict, Counter
 import gzip
 import json
 import logging
@@ -15,6 +15,8 @@ from eli5.utils import max_or_0
 from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
+import langdetect
+from langdetect.lang_detect_exception import LangDetectException
 import numpy as np
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -71,8 +73,6 @@ def train_model(docs: List[Dict],
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
-    model_cls = model_cls or models.DefaultModel
-
     if not docs:
         return no_docs_error()
 
@@ -98,6 +98,9 @@ def train_model(docs: List[Dict],
 
     logging.info('Extracting text')
     add_extracted_text(all_xs)
+    if model_cls is None:
+        model_cls = select_model(
+            [x for x in all_xs if not x.get('extra_non_relevant')])
 
     logging.info('Pre-loading models')
     model_cls(**model_kwargs)
@@ -171,6 +174,24 @@ def add_extracted_text(xs):
                 pool.map(html_text.extract_text, [doc['html'] for doc in xs],
                          chunksize=100)):
             doc['text'] = text
+            try:
+                doc['language'] = langdetect.detect(text)
+            except LangDetectException:
+                doc['language'] = None
+
+
+def select_model(xs):
+    lang_counts = dict(Counter(x['language'] for x in xs))
+    lang_freqs = {lang: count / len(xs) for lang, count in lang_counts.items()}
+    # https://en.wikipedia.org/wiki/Category:Writing_systems_without_word_boundaries
+    # https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+    need_ngrams = {'my', 'zh-cn', 'zh-tw', 'ja', 'km', 'lo', 'za', 'th', 'bo'}
+    need_ngrams_freq = sum(freq for lang, freq in lang_freqs.items()
+                           if lang in need_ngrams)
+    model = models.CharModel if need_ngrams_freq > 0.1 else models.DefaultModel
+    logging.info('{:.0%} documents need char ngrams, using {}'
+                 .format(need_ngrams_freq, model.__name__))
+    return model
 
 
 def build_folds(all_xs, all_ys, advice):
