@@ -172,7 +172,8 @@ def add_extracted_text(xs):
     with Pool() as pool:
         for doc, text in zip(
                 xs,
-                pool.map(html_text.extract_text, [doc['html'] for doc in xs],
+                pool.map(html_text.extract_text,
+                         [(doc['html'] or '') for doc in xs],
                          chunksize=100)):
             doc['text'] = text
             try:
