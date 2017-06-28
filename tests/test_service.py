@@ -1,4 +1,6 @@
+import base64
 from collections import namedtuple
+import gzip
 import json
 import logging
 from pprint import pprint
@@ -24,7 +26,9 @@ class ATestService(Service):
 
 def clear_topics():
     for topic in [ATestService.input_topic, ATestService.output_topic]:
-        consumer = KafkaConsumer(topic, consumer_timeout_ms=100)
+        consumer = KafkaConsumer(
+            topic, group_id='{}-group'.format(topic),
+            consumer_timeout_ms=100)
         for _ in consumer:
             pass
         consumer.commit()
@@ -32,7 +36,8 @@ def clear_topics():
 
 def encode_message(message: Dict) -> bytes:
     try:
-        return json.dumps(message).encode('utf8')
+        return base64.b64encode(
+            gzip.compress(json.dumps(message).encode('utf8')))
     except Exception as e:
         logging.error('Error serializing message', exc_info=e)
         raise

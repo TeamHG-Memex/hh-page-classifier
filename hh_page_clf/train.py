@@ -77,6 +77,7 @@ def train_model(docs: List[Dict],
         return no_docs_error()
 
     all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+    logging.info('Got {:,} labeled pages'.format(len(all_xs)))
     if not all_xs:
         return no_labeled_error()
     n_relevant = sum(doc['relevant'] for doc in all_xs)
