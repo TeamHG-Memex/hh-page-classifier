@@ -105,7 +105,7 @@ def test_training():
         service_thread.join()
 
 
-def get_responses(consumer: KafkaConsumer, timeout_ms=1000):
+def get_responses(consumer: KafkaConsumer, timeout_ms=2000):
     values = []
     while True:
         new_values = [r.value for v in consumer.poll(timeout_ms=timeout_ms).values()

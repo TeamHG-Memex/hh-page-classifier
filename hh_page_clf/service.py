@@ -33,7 +33,7 @@ class Service:
             self.input_topic,
             group_id='{}-group'.format(self.input_topic),
             max_partition_fetch_bytes=self.max_message_size,
-            consumer_timeout_ms=10,
+            consumer_timeout_ms=100,
             **kafka_kwargs)
         self.producer = KafkaProducer(
             max_request_size=self.max_message_size,
@@ -50,15 +50,17 @@ class Service:
         jobs = OrderedDict()  # type: Dict[str, Future]
         with ThreadPoolExecutor(max_workers=4) as pool:
             while True:
+                to_submit = {}
                 for message in self.consumer:
                     value, should_stop = self.extract_value(message)
                     if should_stop:
                         return
                     elif value is not None:
-                        id_ = value['id']
-                        if id_ in jobs:
-                            jobs[id_].cancel()
-                        jobs[id_] = pool.submit(self.train_model, value)
+                        to_submit[value['id']] = value
+                for id_, value in to_submit.items():
+                    if id_ in jobs:
+                        jobs[id_].cancel()
+                    jobs[id_] = pool.submit(self.train_model, value)
                 self.consumer.commit()
                 sent = []
                 for id_, future in jobs.items():
