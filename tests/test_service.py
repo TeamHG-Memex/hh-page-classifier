@@ -36,11 +36,14 @@ def clear_topics():
 
 def encode_message(message: Dict) -> bytes:
     try:
-        return base64.b64encode(
-            gzip.compress(json.dumps(message).encode('utf8')))
+        return json.dumps(message).encode('utf8')
     except Exception as e:
         logging.error('Error serializing message', exc_info=e)
         raise
+
+
+def compress_html(html: str) -> str:
+    return base64.b64encode(gzip.compress(html.encode('utf8'))).decode('ascii')
 
 
 def test_training():
@@ -52,15 +55,15 @@ def test_training():
     service = ATestService(model_cls=ATestModel, debug=False)
     service_thread = threading.Thread(target=service.run_loop)
     service_thread.start()
+    pages = [{'url': 'http://example-{}.com/foo'.format(n),
+              'html': '<h1>hi example-{} number{}</h1>'.format(n, n % 3),
+              'relevant': n % 3 == 1,
+            } for n in range(10)]
     train_request = {
-        'pages': [
-            {
-                'url': 'http://example-{}.com/foo'.format(n),
-                'html': '<h1>hi example-{} number{}</h1>'.format(n, n % 3),
-                'relevant': n % 3 == 1,
-            }
-            for n in range(10)
-        ]
+        'pages': [{'url': page['url'],
+                    'html': compress_html(page['html']),
+                    'relevant': page['relevant']}
+                    for page in pages],
     }
 
     def _test(train_response):
@@ -68,7 +71,7 @@ def test_training():
         pprint(train_response)
         pprint(json.loads(train_response['quality']))
 
-        page_neg, page_pos = train_request['pages'][:2]
+        page_neg, page_pos = pages[:2]
         pred_proba = lambda page: \
             model.predict_proba([{'text': extract_text(page['html'])}])[0][1]
         assert pred_proba(page_pos) > 0.5

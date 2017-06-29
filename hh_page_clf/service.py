@@ -77,16 +77,12 @@ class Service:
     def extract_value(self, message: ConsumerRecord) -> Tuple[Optional[Dict], bool]:
         self._debug_save_message(message.value, 'incoming')
         try:
-            value = json.loads(gzip.decompress(base64.b64decode(message.value))
-                               .decode('utf8'))
-        except Exception: # Falling back to the old format
-            try:
-                value = json.loads(message.value.decode('utf8'))
-            except Exception as e:
-                logging.error('Error decoding message: {}...'
-                              .format(repr(message.value)[:100]),
-                              exc_info=e)
-                return None, False
+            value = json.loads(message.value.decode('utf8'))
+        except Exception as e:
+            logging.error('Error decoding message: {}...'
+                          .format(repr(message.value)[:100]),
+                          exc_info=e)
+            return None, False
         if value == {'from-tests': 'stop'}:
             logging.info('Got message to stop (from tests)')
             return None, True

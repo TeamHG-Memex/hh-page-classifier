@@ -1,4 +1,5 @@
 import argparse
+import base64
 from collections import defaultdict, Counter
 import gzip
 import json
@@ -168,13 +169,19 @@ def doc_is_extra_sampled(doc):
     return doc.get('extra_non_relevant')
 
 
+def extract_text(doc):
+    html = doc['html'] or ''
+    if not doc_is_extra_sampled(doc):
+        try:
+            html = gzip.decompress(base64.b64decode(html)).decode('utf8')
+        except Exception:
+            pass  # support not compressed html too for a while - TODO - remove
+    return html_text.extract_text(html)
+
+
 def add_extracted_text(xs):
     with Pool() as pool:
-        for doc, text in zip(
-                xs,
-                pool.map(html_text.extract_text,
-                         [(doc['html'] or '') for doc in xs],
-                         chunksize=100)):
+        for doc, text in zip(xs, pool.map(extract_text, xs, chunksize=100)):
             doc['text'] = text
             try:
                 doc['language'] = langdetect.detect(text)
