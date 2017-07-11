@@ -263,8 +263,7 @@ def train_and_evaluate(
             metric_futures = [
                 pool.apply_async(
                     eval_on_fold,
-                    args=(
-                        fold, model_cls, model_kwargs, all_xs, all_ys),
+                    args=(fold, model_cls, model_kwargs, all_xs, all_ys),
                     kwds=dict(
                         skip_serialization_check=skip_serialization_check),
                 ) for fold in folds]

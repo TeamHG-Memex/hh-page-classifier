@@ -74,7 +74,8 @@ class Service:
                 for id_ in sent:
                     del jobs[id_]
 
-    def extract_value(self, message: ConsumerRecord) -> Tuple[Optional[Dict], bool]:
+    def extract_value(self, message: ConsumerRecord
+                      ) -> Tuple[Optional[Dict], bool]:
         self._debug_save_message(message.value, 'incoming')
         try:
             value = json.loads(message.value.decode('utf8'))
