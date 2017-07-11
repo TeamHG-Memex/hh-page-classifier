@@ -169,24 +169,27 @@ def doc_is_extra_sampled(doc):
     return doc.get('extra_non_relevant')
 
 
-def extract_text(doc):
+def extract_text_lang(doc):
     html = doc['html'] or ''
     if not doc_is_extra_sampled(doc):
         try:
             html = gzip.decompress(base64.b64decode(html)).decode('utf8')
         except Exception:
             pass  # support not compressed html too for a while - TODO - remove
-    return html_text.extract_text(html)
+    text = html_text.extract_text(html)
+    try:
+        lang = langdetect.detect(text)
+    except LangDetectException:
+        lang = None
+    return text, lang
 
 
 def add_extracted_text(xs):
     with Pool() as pool:
-        for doc, text in zip(xs, pool.map(extract_text, xs, chunksize=100)):
+        for doc, (text, lang) in zip(
+                xs, pool.imap(extract_text_lang, xs, chunksize=10)):
             doc['text'] = text
-            try:
-                doc['language'] = langdetect.detect(text)
-            except LangDetectException:
-                doc['language'] = None
+            doc['language'] = lang
 
 
 def select_model(xs, ngram_docs_threshold=0.2):
