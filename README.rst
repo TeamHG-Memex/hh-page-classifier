@@ -80,6 +80,14 @@ Outgoing message with trained model::
     }
 
 
+Outgoing message with progress (``dd-modeler-progress`` queue)::
+
+  {
+    "id": "some id",
+    "percentage_done": 98.123,
+  }
+
+
 Usage
 -----
 
