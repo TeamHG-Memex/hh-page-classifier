@@ -107,7 +107,9 @@ class Service:
     def train_model(self, request: Dict) -> Dict:
         try:
             result = train_model(
-                request['pages'], model_cls=self.model_cls, **self.model_kwargs)
+                request['pages'], model_cls=self.model_cls,
+                progress_callback=self.progress_callback,
+                **self.model_kwargs)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
             result = ModelMeta(
@@ -121,6 +123,9 @@ class Service:
             'model': (encode_object(result.model) if result.model is not None
                       else None),
         }
+
+    def progress_callback(self, progress):
+        print('*' * 60, progress, '*' * 60)  # TODO
 
     def send_result(self, result: Dict) -> None:
         message = json.dumps(result).encode('utf8')

@@ -26,7 +26,7 @@ import tldextract
 
 from . import models
 from .models import BaseModel
-from .utils import decode_object, encode_object, configure_logging
+from .utils import decode_object, encode_object, configure_logging, PBar
 
 
 ERROR = 'Error'
@@ -69,12 +69,15 @@ def train_model(docs: List[Dict],
                 skip_serialization_check=False,
                 benchmark=False,
                 random_pages=None,
+                progress_callback=None,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
     {'url': url, 'html': html, 'relevant': True/False/None}.
     Return the model itself and a human-readable description of it's performance.
     """
+    pbar = PBar(callback=progress_callback)
+
     if not docs:
         return no_docs_error()
 
@@ -101,6 +104,7 @@ def train_model(docs: List[Dict],
 
     logging.info('Extracting text')
     add_extracted_text(all_xs)
+    pbar.progress(0.20)
     if model_cls is None:
         model_cls = select_model(
             [x for x in all_xs if not x.get('extra_non_relevant')])
@@ -115,10 +119,12 @@ def train_model(docs: List[Dict],
         skip_serialization_check=skip_serialization_check,
         skip_validation=skip_validation,
         benchmark=benchmark,
+        pbar=pbar.make_child(0.75),
     )
 
     meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
     logging.info('Model meta:\n{}'.format(meta_repr(meta)))
+    pbar.progress(0.05)
 
     return ModelMeta(model=model, meta=meta, metrics=metrics)
 
@@ -256,10 +262,12 @@ def two_class_folds(folds, all_ys):
 def train_and_evaluate(
         all_xs, all_ys, folds,
         model_cls, model_kwargs,
+        pbar: PBar,
         skip_serialization_check=False,
         skip_validation=False,
         benchmark=False
         ):
+    unit_progress = 1 / (len(folds) + 1)
     with ThreadPool(processes=len(folds)) as pool:
         metric_futures = []
         if folds and not skip_validation:
@@ -268,9 +276,11 @@ def train_and_evaluate(
                     eval_on_fold,
                     args=(fold, model_cls, model_kwargs, all_xs, all_ys),
                     kwds=dict(
-                        skip_serialization_check=skip_serialization_check),
+                        skip_serialization_check=skip_serialization_check,
+                        pbar=pbar.make_child(unit_progress)),
                 ) for fold in folds]
         model = fit_model(model_cls, model_kwargs, all_xs, all_ys)
+        pbar.progress(unit_progress)
         metrics = defaultdict(list)
         for future in metric_futures:
             _metrics = future.get()
@@ -297,17 +307,20 @@ def fit_model(model_cls: BaseModel, model_kwargs: Dict, xs, ys) -> BaseModel:
 
 
 def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
-                 all_xs, all_ys, skip_serialization_check=False) -> Dict:
+                 all_xs, all_ys, pbar: PBar, skip_serialization_check=False,
+                 ) -> Dict:
     """ Train and evaluate the classifier on a given fold.
     """
     train_idx, test_idx = fold
     model = fit_model(model_cls, model_kwargs,
                       flt_list(all_xs, train_idx), all_ys[train_idx])
+    pbar.progress(0.8)
     if not skip_serialization_check:
         model = decode_object(encode_object(model))  # type: BaseModel
     test_xs, test_ys = flt_list(all_xs, test_idx), all_ys[test_idx]
     pred_ys_prob = model.predict_proba(test_xs)[:, 1]
     pred_ys = model.predict(test_xs)
+    pbar.progress(0.15)
     metrics = {
         'Accuracy': {'all': accuracy_score(test_ys, pred_ys)},
         'ROC AUC': {'all': get_roc_auc(test_ys, pred_ys_prob)},
@@ -320,6 +333,7 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
             accuracy_score(test_ys[human_idx], pred_ys[human_idx])
         metrics['ROC AUC']['human'] = \
             get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx])
+    pbar.progress(0.05)
 
     return metrics
 
