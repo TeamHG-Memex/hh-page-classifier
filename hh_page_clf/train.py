@@ -19,6 +19,7 @@ import html_text
 import langdetect
 from langdetect.lang_detect_exception import LangDetectException
 import numpy as np
+from scipy.stats.mstats import gmean
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score
 import tldextract
@@ -169,7 +170,7 @@ def doc_is_extra_sampled(doc):
     return doc.get('extra_non_relevant')
 
 
-def extract_text_lang(doc):
+def extract_features(doc):
     html = doc['html'] or ''
     if not doc_is_extra_sampled(doc):
         try:
@@ -181,15 +182,17 @@ def extract_text_lang(doc):
         lang = langdetect.detect(text)
     except LangDetectException:
         lang = None
-    return text, lang
+    return {
+        'text': text,
+        'language': lang,
+    }
 
 
 def add_extracted_text(xs):
     with Pool() as pool:
-        for doc, (text, lang) in zip(
-                xs, pool.imap(extract_text_lang, xs, chunksize=10)):
-            doc['text'] = text
-            doc['language'] = lang
+        for doc, features in zip(
+                xs, pool.imap(extract_features, xs, chunksize=10)):
+            doc.update(features)
 
 
 def select_model(xs, ngram_docs_threshold=0.2):
@@ -632,7 +635,6 @@ def main():
             print('\nResults for {}'.format(filename))
             print(meta_repr(result.meta))
 
-        from scipy.stats.mstats import gmean
         print()
         metric = 'ROC AUC'
         for kind in ['all', 'human']:
