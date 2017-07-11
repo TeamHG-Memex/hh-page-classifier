@@ -1,9 +1,9 @@
 import argparse
-import base64
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError
 import gzip
 import hashlib
+from functools import partial
 import logging
 import json
 from pprint import pformat
@@ -20,6 +20,7 @@ from .utils import configure_logging, encode_object
 class Service:
     input_topic = 'dd-modeler-input'
     output_topic = 'dd-modeler-output'
+    progress_output_topic = 'dd-modeler-progress'
     max_message_size = 104857600
 
     def __init__(self, kafka_host=None, model_cls=None, model_kwargs=None,
@@ -74,7 +75,8 @@ class Service:
                 for id_ in sent:
                     del jobs[id_]
 
-    def extract_value(self, message: ConsumerRecord) -> Tuple[Optional[Dict], bool]:
+    def extract_value(self, message: ConsumerRecord
+                      ) -> Tuple[Optional[Dict], bool]:
         self._debug_save_message(message.value, 'incoming')
         try:
             value = json.loads(message.value.decode('utf8'))
@@ -104,9 +106,12 @@ class Service:
             return None, False
 
     def train_model(self, request: Dict) -> Dict:
+        id_ = request['id']
         try:
             result = train_model(
-                request['pages'], model_cls=self.model_cls, **self.model_kwargs)
+                request['pages'], model_cls=self.model_cls,
+                progress_callback=partial(self.progress_callback, id_=id_),
+                **self.model_kwargs)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
             result = ModelMeta(
@@ -115,14 +120,25 @@ class Service:
                     ERROR,
                     'Unknown error while training a model: {}'.format(e))]))
         return {
-            'id': request['id'],
+            'id': id_,
             'quality': json.dumps(attr.asdict(result.meta)),
             'model': (encode_object(result.model) if result.model is not None
                       else None),
         }
 
+    def progress_callback(self, progress: float, id_: str):
+        logging.info('Sending progress update for {}: {:.0%}'
+                     .format(id_, progress))
+        self.producer.send(
+            self.progress_output_topic, _encode_message({
+                'id': id_,
+                'percentage_done': 100 * progress,
+            })
+        )
+        self.producer.flush()
+
     def send_result(self, result: Dict) -> None:
-        message = json.dumps(result).encode('utf8')
+        message = _encode_message(result)
         self._debug_save_message(message, 'outgoing')
         logging.info('Sending result for id "{}", model size {:,} bytes'
                      .format(result.get('id'),
@@ -137,6 +153,10 @@ class Service:
             logging.info('Saving {} message to {}'.format(kind, filename))
             with gzip.open(filename, 'wb') as f:
                 f.write(message)
+
+
+def _encode_message(value: Dict) -> bytes:
+    return json.dumps(value).encode('utf8')
 
 
 def main():

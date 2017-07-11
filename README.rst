@@ -80,6 +80,14 @@ Outgoing message with trained model::
     }
 
 
+Outgoing message with progress (``dd-modeler-progress`` queue)::
+
+  {
+    "id": "some id",
+    "percentage_done": 98.123,
+  }
+
+
 Usage
 -----
 
@@ -96,7 +104,10 @@ and random pages (1k alexa top-1m sample) are available at
 and `lda.pkl <https://s3-us-west-2.amazonaws.com/darpa-memex/thh/lda.pkl>`_.
 
 Pass path to random pages via ``--random-pages`` argument, and path to LDA
-model via ``--lda`` argument.
+model via ``--lda`` argument. Note that LDA model is optional and is disabled
+by default. It can get a very slight improvement in accuracy and some sensible
+looking topics, but also slows down training and prediction quite a bit,
+and requires more memory.
 
 Random pages are a sample of a low number (about 1k) random pages
 in the same format as input pages (with "url" and "html" fields).
