@@ -12,6 +12,7 @@ from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 from scipy.sparse import issparse
 from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 
 from .utils import get_stop_words
 
@@ -55,6 +56,7 @@ class DefaultModel(BaseModel):
         'extra_tree': lambda: ExtraTreesClassifier(
             n_estimators=100, random_state=42),
         'xgboost': lambda: XGBClassifier(max_depth=2, missing=0),
+        'catboost': lambda: CatBoostClassifier(depth=2),
     }
     default_clf_kind = 'xgboost'
 
@@ -144,6 +146,8 @@ class DefaultModel(BaseModel):
             # Work around xgboost issue:
             # https://github.com/dmlc/xgboost/issues/1238#issuecomment-243872543
             pipeline.append(CSCTransformer())
+        elif isinstance(self.clf, CatBoostClassifier):
+            pipeline.append(ToDenseTransformer())
         pipeline.append(self.clf)
         return make_pipeline(*pipeline)
 
@@ -309,6 +313,11 @@ class StatelessTransformer(TransformerMixin):
 class CSCTransformer(StatelessTransformer):
     def transform(self, xs, y=None, **fit_params):
         return xs.tocsc() if issparse(xs) else xs
+
+
+class ToDenseTransformer(StatelessTransformer):
+    def transform(self, xs, y=None, **fit_params):
+        return xs.toarray() if issparse(xs) else xs
 
 
 class LDATransformer(StatelessTransformer):
