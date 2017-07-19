@@ -49,7 +49,7 @@ class Service:
         This method loops until a message to stop is received (sent only from tests).
         """
         jobs = OrderedDict()  # type: Dict[str, Future]
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=1) as pool:
             while True:
                 to_submit = {}
                 for message in self.consumer:
