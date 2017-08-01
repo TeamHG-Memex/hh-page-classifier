@@ -8,7 +8,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'attrs',
-        'eli5>=0.3',
+        'eli5>=0.7',
         'html-text',
         'json_lines>=0.2.0',
         'kafka-python==1.3.3',

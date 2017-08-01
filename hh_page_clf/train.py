@@ -13,12 +13,15 @@ from typing import List, Dict
 import attr
 from eli5.base import FeatureWeights
 from eli5.utils import max_or_0
-from eli5.formatters import format_as_text, format_as_dict, fields
+from eli5.formatters import (
+    format_as_text, format_as_dict, format_as_dataframe, fields,
+)
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import langdetect
 from langdetect.lang_detect_exception import LangDetectException
 import numpy as np
+import pandas as pd
 from scipy.stats.mstats import gmean
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -439,10 +442,15 @@ def get_meta(
         )))
     description.extend(metrics_description(metrics))
 
+    if skip_eli5:
+        weights = None
+    else:
+        weights = get_eli5_weights(model, all_labeled)
+
     return Meta(
         advice=advice,
         description=description,
-        weights=get_eli5_weights(model) if not skip_eli5 else None,
+        weights=weights,
         tooltips=TOOLTIPS,
     )
 
@@ -517,11 +525,22 @@ def format_mean_and_std(values):
     return '{:.3f} ± {:.3f}'.format(np.mean(values), 1.96 * np.std(values))
 
 
-def get_eli5_weights(model: BaseModel):
+def get_eli5_weights(model: BaseModel, docs: List):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
     expl = model.explain_weights()
-    logging.info(format_as_text(expl, show=fields.WEIGHTS))
+    logging.info('explain_weights:\n{}'
+                 .format(format_as_text(expl, show=fields.WEIGHTS)))
+    import tqdm
+    df = pd.concat([format_as_dataframe(model.explain_prediction(doc))
+                    for doc in tqdm.tqdm(docs)])
+    df = df.reset_index()
+    df.loc[df['target'] == False, 'weight'] *= -1
+    df = df[['feature', 'weight']]
+    df_mean = df.groupby('feature').mean()
+    df_mean.sort_values('weight', inplace=True)
+    logging.info('explain_prediction:\n{}'.format(repr(df_mean)))
+
     if expl.targets:
         weights = expl.targets[0].feature_weights
         weight_range = get_weight_range(weights)

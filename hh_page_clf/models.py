@@ -1,7 +1,7 @@
 import pickle
 from typing import Dict, Any
 
-from eli5.sklearn.explain_weights import explain_weights
+from eli5 import explain_weights, explain_prediction
 import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
@@ -36,6 +36,9 @@ class BaseModel:
         raise NotImplementedError
 
     def explain_weights(self):
+        raise NotImplementedError
+
+    def explain_prediction(self, doc):
         raise NotImplementedError
 
     def __getstate__(self):
@@ -210,28 +213,13 @@ class DefaultModel(BaseModel):
 
     def explain_weights(self):
         expl = explain_weights(self.clf, vec=self.vec, top=100)
-        if expl.targets:
-            fweights = expl.targets[0].feature_weights
-            for fw_lst in [fweights.pos, fweights.neg]:
-                for fw in fw_lst:
-                    fw.feature = self._prettify_feature(fw.feature)
-        elif expl.feature_importances:
-            importances = expl.feature_importances.importances
-            for fw in importances:
-                fw.feature = self._prettify_feature(fw.feature)
+        prettify_features(expl)
         return expl
 
-    @staticmethod
-    def _prettify_feature(feature):
-        for prefix, tpl in [
-            ('text__', '{}'),
-            ('url__', 'URL: {}'),
-            ('lda__', 'Topic: {}'),
-            ('dmoz__dmoz_', 'Topic: {}'),
-        ]:
-            if feature.startswith(prefix):
-                return tpl.format(feature[len(prefix):])
-        return feature
+    def explain_prediction(self, doc):
+        expl = explain_prediction(self.clf, doc, vec=self.vec)
+        prettify_features(expl)
+        return expl
 
     def get_params(self):
         return {
@@ -247,6 +235,30 @@ class DefaultModel(BaseModel):
         set_attributes(self, 'url_vec', url_vec_attrs)
         set_attributes(self, 'dmoz_vec', dmoz_vec_attrs)
         set_attributes(self, 'clf', clf_attrs)
+
+
+def prettify_features(expl):
+    if expl.targets:
+        fweights = expl.targets[0].feature_weights
+        for fw_lst in [fweights.pos, fweights.neg]:
+            for fw in fw_lst:
+                fw.feature = _prettify_feature(fw.feature)
+    elif expl.feature_importances:
+        importances = expl.feature_importances.importances
+        for fw in importances:
+            fw.feature = _prettify_feature(fw.feature)
+
+
+def _prettify_feature(feature):
+    for prefix, tpl in [
+        ('text__', '{}'),
+        ('url__', 'URL: {}'),
+        ('lda__', 'Topic: {}'),
+        ('dmoz__dmoz_', 'Topic: {}'),
+    ]:
+        if feature.startswith(prefix):
+            return tpl.format(feature[len(prefix):])
+    return feature
 
 
 class CharModel(DefaultModel):
