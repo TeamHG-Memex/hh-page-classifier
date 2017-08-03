@@ -14,6 +14,7 @@ setup(
         'kafka-python==1.3.3',
         'langdetect',
         'numpy',
+        'pandas',
         'scikit-learn>=0.18<0.19',
         'scipy==0.18.1',
         'stop-words',
