@@ -525,6 +525,16 @@ def format_mean_and_std(values):
     return '{:.3f} ± {:.3f}'.format(np.mean(values), 1.96 * np.std(values))
 
 
+def get_signed_weights(dfs):
+    df = pd.concat(dfs)
+    df = df.reset_index()
+    df.loc[~df['target'], 'weight'] *= -1
+    df = df[['feature', 'weight']]
+    df_mean = df.groupby('feature').mean()
+    df_mean.sort_values('weight', inplace=True)
+    return df_mean
+
+
 def get_eli5_weights(model: BaseModel, docs: List):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
@@ -532,14 +542,11 @@ def get_eli5_weights(model: BaseModel, docs: List):
     logging.info('explain_weights:\n{}'
                  .format(format_as_text(expl, show=fields.WEIGHTS)))
     import tqdm
-    df = pd.concat([format_as_dataframe(model.explain_prediction(doc))
-                    for doc in tqdm.tqdm(docs)])
-    df = df.reset_index()
-    df.loc[df['target'] == False, 'weight'] *= -1
-    df = df[['feature', 'weight']]
-    df_mean = df.groupby('feature').mean()
-    df_mean.sort_values('weight', inplace=True)
+    dfs = [format_as_dataframe(model.explain_prediction(doc))
+           for doc in tqdm.tqdm(docs)]
+    df_mean = get_signed_weights(dfs)
     logging.info('explain_prediction:\n{}'.format(repr(df_mean)))
+    import IPython; IPython.embed()
 
     if expl.targets:
         weights = expl.targets[0].feature_weights
