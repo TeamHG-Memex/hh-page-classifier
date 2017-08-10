@@ -528,6 +528,9 @@ def format_mean_and_std(values):
 def get_signed_weights(dfs):
     df = pd.concat(dfs)
     df = df.reset_index()
+    df = df.dropna(subset=['value'])  # drop missing values
+    # Another option would be to invert weights for missing values:
+    # df.loc[np.isnan(df['value']), 'weight'] *= -1
     df.loc[~df['target'], 'weight'] *= -1
     df = df[['feature', 'weight']]
     df_mean = df.groupby('feature').mean()
