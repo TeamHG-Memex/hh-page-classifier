@@ -2,6 +2,10 @@ import pickle
 from typing import Dict, Any
 
 from eli5 import explain_weights, explain_prediction
+from eli5.base import (
+    Explanation, TargetExplanation, FeatureWeight, FeatureWeights)
+from eli5.sklearn.utils import get_feature_names
+from eli5.xgboost import _target_feature_weights
 import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
@@ -11,7 +15,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegressionCV, SGDClassifier
 from sklearn.pipeline import make_pipeline, FeatureUnion
 from scipy.sparse import issparse
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, DMatrix
 
 from .utils import get_stop_words
 
@@ -36,6 +40,9 @@ class BaseModel:
         raise NotImplementedError
 
     def explain_weights(self):
+        raise NotImplementedError
+
+    def explain_predictions(self, docs):
         raise NotImplementedError
 
     def explain_prediction(self, doc):
@@ -215,6 +222,46 @@ class DefaultModel(BaseModel):
         expl = explain_weights(self.clf, vec=self.vec, top=100)
         prettify_features(expl)
         return expl
+
+    def explain_predictions(self, docs):
+        if not isinstance(self.clf, XGBClassifier):
+            raise NotImplementedError
+        booster = self.clf.booster()
+        xgb_feature_names = {f: i for i, f in enumerate(booster.feature_names)}
+        feature_names = get_feature_names(self.clf, self.vec,
+                                          num_features=len(xgb_feature_names))
+        feature_names.bias_name = '<BIAS>'
+        X = self.vec.transform(docs)
+        X = X.tocsc()
+        dmatrix = DMatrix(X, missing=self.clf.missing)
+        leaf_ids = booster.predict(dmatrix, pred_leaf=True)
+        tree_dumps = booster.get_dump(with_stats=True)
+        docs_weights = []
+        for i, _leaf_ids in enumerate(leaf_ids):
+            all_weights = _target_feature_weights(
+                _leaf_ids, tree_dumps,
+                feature_names=feature_names,
+                xgb_feature_names=xgb_feature_names)[1]
+            weights = np.zeros_like(all_weights)
+            idx = X[i].nonzero()[1]
+            bias_idx = feature_names.bias_idx
+            weights[idx] = all_weights[idx]
+            weights[bias_idx] = all_weights[bias_idx]
+            docs_weights.append(weights)
+        feature_weights = sorted([
+            FeatureWeight(_prettify_feature(feature), weight)
+            for feature, weight in zip(feature_names,
+                                       np.mean(docs_weights, axis=0))
+            if weight != 0],
+            key=lambda fw: fw.weight)
+        return Explanation(
+            estimator=type(self.clf).__name__,
+            targets=[TargetExplanation('y', feature_weights=FeatureWeights(
+                pos=list(reversed(
+                    [fw for fw in feature_weights if fw.weight >= 0])),
+                neg=[fw for fw in feature_weights if fw.weight < 0],
+            ))],
+        )
 
     def explain_prediction(self, doc):
         expl = explain_prediction(self.clf, doc, vec=self.vec)

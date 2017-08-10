@@ -535,30 +535,32 @@ def format_mean_and_std(values):
 
 
 def get_signed_weights(dfs):
+    """ Usage example:
+    get_signed_weights(
+        [format_as_dataframe(model.explain_prediction(doc)) for doc in docs])
+    """
     df = pd.concat(dfs)
     df = df.reset_index()
-    df = df.dropna(subset=['value'])  # drop missing values
+    df.loc[np.isnan(df['value']), 'weight'] = 0  # drop missing values
     # Another option would be to invert weights for missing values:
     # df.loc[np.isnan(df['value']), 'weight'] *= -1
     df.loc[~df['target'], 'weight'] *= -1
     df = df[['feature', 'weight']]
     df_mean = df.groupby('feature').mean()
-    df_mean.sort_values('weight', inplace=True)
+    df_mean.sort_values('weight', inplace=True, ascending=False)
     return df_mean
 
 
 def get_eli5_weights(model: BaseModel, docs: List):
     """ Return eli5 feature weights (as a dict) with added color info.
     """
-    expl = model.explain_weights()
+    logging.info('explaining weights')
+    try:
+        expl = model.explain_predictions(docs)
+    except NotImplementedError:
+        expl = model.explain_weights()
     logging.info('explain_weights:\n{}'
                  .format(format_as_text(expl, show=fields.WEIGHTS)))
-    import tqdm
-    dfs = [format_as_dataframe(model.explain_prediction(doc))
-           for doc in tqdm.tqdm(docs)]
-    df_mean = get_signed_weights(dfs)
-    logging.info('explain_prediction:\n{}'.format(repr(df_mean)))
-    import IPython; IPython.embed()
 
     if expl.targets:
         weights = expl.targets[0].feature_weights
@@ -682,6 +684,7 @@ def main():
     arg('--limit', type=int, help='use a subset of documents for training')
     args = parser.parse_args()
 
+    random.seed(42)
     train_results = [
         train_model_cli(filename, args) for filename in args.message_filenames]
     if len(train_results) > 1:
