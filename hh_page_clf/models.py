@@ -6,6 +6,7 @@ from eli5.base import (
     Explanation, TargetExplanation, FeatureWeight, FeatureWeights)
 from eli5.sklearn.utils import get_feature_names
 from eli5.xgboost import _target_feature_weights
+from eli5._feature_weights import get_top_features
 import numpy as np
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.ensemble import ExtraTreesClassifier
@@ -43,6 +44,8 @@ class BaseModel:
         raise NotImplementedError
 
     def explain_predictions(self, docs):
+        """ Faster version of just doing explain_prediction for multiple docs.
+        """
         raise NotImplementedError
 
     def explain_prediction(self, doc):
@@ -223,7 +226,7 @@ class DefaultModel(BaseModel):
         prettify_features(expl)
         return expl
 
-    def explain_predictions(self, docs):
+    def explain_predictions(self, docs, top=30):
         if not isinstance(self.clf, XGBClassifier):
             raise NotImplementedError
         booster = self.clf.booster()
@@ -248,19 +251,15 @@ class DefaultModel(BaseModel):
             weights[idx] = all_weights[idx]
             weights[bias_idx] = all_weights[bias_idx]
             docs_weights.append(weights)
-        feature_weights = sorted([
-            FeatureWeight(_prettify_feature(feature), weight)
-            for feature, weight in zip(feature_names,
-                                       np.mean(docs_weights, axis=0))
-            if weight != 0],
-            key=lambda fw: fw.weight)
+        weights = np.mean(docs_weights, axis=0)
+        feature_weights = get_top_features(
+            feature_names=np.array(
+                [_prettify_feature(f) for f in feature_names]),
+            coef=weights,
+            top=top)
         return Explanation(
             estimator=type(self.clf).__name__,
-            targets=[TargetExplanation('y', feature_weights=FeatureWeights(
-                pos=list(reversed(
-                    [fw for fw in feature_weights if fw.weight >= 0])),
-                neg=[fw for fw in feature_weights if fw.weight < 0],
-            ))],
+            targets=[TargetExplanation('y', feature_weights=feature_weights)],
         )
 
     def explain_prediction(self, doc):

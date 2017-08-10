@@ -536,8 +536,12 @@ def format_mean_and_std(values):
 
 def get_signed_weights(dfs):
     """ Usage example:
+
     get_signed_weights(
         [format_as_dataframe(model.explain_prediction(doc)) for doc in docs])
+
+    This is left only for comparison with fast explain_predictions for XGBoost,
+    this code is not called anywhere.
     """
     df = pd.concat(dfs)
     df = df.reset_index()
@@ -559,7 +563,7 @@ def get_eli5_weights(model: BaseModel, docs: List):
         expl = model.explain_predictions(docs)
     except NotImplementedError:
         expl = model.explain_weights()
-    logging.info('explain_weights:\n{}'
+    logging.info('model weights:\n{}'
                  .format(format_as_text(expl, show=fields.WEIGHTS)))
 
     if expl.targets:
