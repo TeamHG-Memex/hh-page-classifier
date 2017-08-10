@@ -73,6 +73,7 @@ def train_model(docs: List[Dict],
                 benchmark=False,
                 random_pages=None,
                 progress_callback=None,
+                limit=None,
                 **model_kwargs) -> ModelMeta:
     """ Train and evaluate a model.
     docs is a list of dicts:
@@ -83,6 +84,14 @@ def train_model(docs: List[Dict],
 
     if not docs:
         return no_docs_error()
+
+    if limit is not None and len(docs) > limit:
+        # discard unlabeled documents: they are used only for final report
+        docs = [doc for doc in docs if doc.get('relevant') in [True, False]]
+        if len(docs) > limit:
+            docs = random.sample(docs, limit)
+        logging.info('Leaving {:,} labeled pages due to passed limit'
+                     .format(len(docs)))
 
     all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
     logging.info('Got {:,} labeled pages'.format(len(all_xs)))
@@ -645,6 +654,7 @@ def train_model_cli(message_filename, args):
         benchmark=True,
         skip_validation=args.no_validation,
         model_cls=getattr(models, args.model) if args.model else None,
+        limit=args.limit,
     )
     logging.info('Training took {:.1f} s'.format(time.time() - t0))
     logging.info(
@@ -669,6 +679,7 @@ def main():
     arg('--doc2vec', help='path to doc2vec model')
     arg('--dmoz-fasttext', help='path to dmoz fasttext model')
     arg('--dmoz-sklearn', help='path to dmoz sklearn model in .pkl format')
+    arg('--limit', type=int, help='use a subset of documents for training')
     args = parser.parse_args()
 
     train_results = [
