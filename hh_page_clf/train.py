@@ -727,6 +727,7 @@ def main():
             logging.info('gmean {metric} of "{kind}" runs: {gmean:.3f}'.format(
                 metric=metric,
                 kind=kind,
-                gmean=gmean([np.mean([run[kind] for run in res.metrics[metric]])
+                gmean=gmean([np.mean([run.get(kind, run['all'])
+                                      for run in res.metrics[metric]])
                              for res in train_results]),
             ))
