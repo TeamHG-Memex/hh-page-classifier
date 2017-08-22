@@ -2,8 +2,7 @@ import pickle
 from typing import Dict, Any
 
 from eli5 import explain_weights, explain_prediction
-from eli5.base import (
-    Explanation, TargetExplanation, FeatureWeight, FeatureWeights)
+from eli5.base import Explanation, TargetExplanation
 from eli5.sklearn.utils import get_feature_names
 from eli5.xgboost import _target_feature_weights
 from eli5._feature_weights import get_top_features

@@ -2,20 +2,21 @@ import argparse
 import base64
 from collections import defaultdict, Counter
 import gzip
+from itertools import chain, repeat
 import json
 import logging
 from multiprocessing.pool import Pool, ThreadPool
+from pathlib import Path
 import random
 from statistics import mean
 import time
 from typing import List, Dict
+from urllib.parse import unquote
 
 import attr
 from eli5.base import FeatureWeights
 from eli5.utils import max_or_0
-from eli5.formatters import (
-    format_as_text, format_as_dict, format_as_dataframe, fields,
-)
+from eli5.formatters import format_as_text, format_as_dict, fields
 from eli5.formatters.html import format_hsl, weight_color_hsl, get_weight_range
 import html_text
 import langdetect
@@ -640,11 +641,35 @@ def _time(fn, *args, **kwargs):
     return time.time() - t0
 
 
+def load_training_data(filename: str) -> Dict:
+    path = Path(filename)
+    if path.is_dir():
+        # positive and negative pages are in "positive" and "negative" folders,
+        # and URLs are file names
+        negative, positive = path / 'negative', path / 'positive'
+        if not negative.exists() or not positive.exists():
+            raise RuntimeError(
+                '{} must have "negative" and "positive" subfolders'
+                .format(path.absolute()))
+        return {'pages': [
+            {'html': p.read_text(encoding='utf8'),
+             'url': unquote(p.name),
+             'relevant': relevant
+             } for p, relevant in chain(
+                zip(negative.iterdir(), repeat(False)),
+                zip(positive.iterdir(), repeat(True)),
+            )],
+        }
+    else:
+        # a JSON message (maybe gzipped)
+        opener = gzip.open if filename.endswith('.gz') else open
+        with opener(filename, 'rt') as f:
+            return json.load(f)
+
+
 def train_model_cli(message_filename, args):
-    opener = gzip.open if message_filename.endswith('.gz') else open
-    with opener(message_filename, 'rt') as f:
-        logging.info('Decoding message')
-        message = json.load(f)
+    logging.info('Loading training data')
+    message = load_training_data(message_filename)
     logging.info('Done, starting train_model')
     t0 = time.time()
     result = train_model(
