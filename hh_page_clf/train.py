@@ -7,8 +7,10 @@ import json
 import logging
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
+import pickle
 import random
 from statistics import mean
+import sys
 import time
 from typing import List, Dict
 from urllib.parse import unquote
@@ -667,7 +669,7 @@ def load_training_data(filename: str) -> Dict:
             return json.load(f)
 
 
-def train_model_cli(message_filename, args):
+def train_model_cli(message_filename, args) -> ModelMeta:
     logging.info('Loading training data')
     message = load_training_data(message_filename)
     logging.info('Done, starting train_model')
@@ -702,6 +704,7 @@ def main():
     arg('--clf', choices=sorted(models.DefaultModel.clf_kinds))
     arg('--model', choices=['DefaultModel', 'CharModel'])
     arg('--no-dump', action='store_true', help='skip serialization checks')
+    arg('--output', help='pickle model to given file')
     arg('--no-eli5', action='store_true', help='skip eli5')
     arg('--no-validation', action='store_true', help='skip validation')
     arg('--random-pages', help='path to random negative pages',
@@ -731,3 +734,10 @@ def main():
                                       for run in res.metrics[metric]])
                              for res in train_results]),
             ))
+        if args.output:
+            print('Ignoring --output as multiple inputs were given',
+                  file=sys.stderr)
+    elif args.output:
+        with open(args.output, 'wb') as f:
+            pickle.dump(train_results[0].model, f,
+                        protocol=pickle.HIGHEST_PROTOCOL)
