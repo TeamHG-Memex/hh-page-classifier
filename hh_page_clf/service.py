@@ -45,7 +45,8 @@ class Service:
         with a report on model quality.
         If several messages with the same id arrive, result of only the last one
         will be sent back.
-        This method loops until a message to stop is received (sent only from tests).
+        This method loops until a message to stop is received
+        (sent only from tests).
         """
         jobs = OrderedDict()  # type: Dict[str, Future]
         with ThreadPoolExecutor(max_workers=1) as pool:

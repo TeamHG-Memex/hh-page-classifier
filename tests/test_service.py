@@ -50,9 +50,9 @@ def test_training():
             } for n in range(10)]
     train_request = {
         'pages': [{'url': page['url'],
-                    'html': compress_html(page['html']),
-                    'relevant': page['relevant']}
-                    for page in pages],
+                   'html': compress_html(page['html']),
+                   'relevant': page['relevant']}
+                  for page in pages],
     }
 
     def _test(train_response):
@@ -90,7 +90,8 @@ def test_training():
                 {'some id 1', 'some id 2'})
         error_response = [r for r in responses if r['id'] == '3'][0]
         assert 'Error' in error_response['quality']
-        assert "'bool' object has no attribute 'get'" in error_response['quality']
+        assert ("'bool' object has no attribute 'get'"
+                in error_response['quality'])
     finally:
         producer.send(ATestService.input_topic, {'from-tests': 'stop'})
         producer.flush()
@@ -100,8 +101,9 @@ def test_training():
 def get_responses(consumer: KafkaConsumer, timeout_ms=2000):
     values = []
     while True:
-        new_values = [r.value for v in consumer.poll(timeout_ms=timeout_ms).values()
-                      for r in v]
+        new_values = [
+            r.value for v in consumer.poll(timeout_ms=timeout_ms).values()
+            for r in v]
         if values and not new_values:
             break
         values.extend(new_values)
