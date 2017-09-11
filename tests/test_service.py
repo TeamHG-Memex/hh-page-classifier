@@ -22,6 +22,8 @@ configure_logging()
 class ATestService(Service):
     input_topic = 'test-{}'.format(Service.input_topic)
     ouput_topic = 'test-{}'.format(Service.output_topic)
+    trainer_topic = 'test-{}'.format(Service.trainer_topic)
+    progress_output_topic = 'test-{}'.format(Service.progress_output_topic)
 
 
 def encode_message(message: Dict) -> bytes:
@@ -38,9 +40,12 @@ def compress_html(html: str) -> str:
 
 def test_training():
     producer = KafkaProducer(value_serializer=encode_message)
-    consumer = KafkaConsumer(
-        ATestService.output_topic,
-        value_deserializer=decode_message)
+    consumer = KafkaConsumer(ATestService.output_topic,
+                             value_deserializer=decode_message)
+    trainer_consumer = KafkaConsumer(ATestService.trainer_topic,
+                                     value_deserializer=decode_message)
+    for c in [consumer, trainer_consumer]:
+        c.poll(timeout_ms=10)
     service = ATestService(model_cls=ATestModel, debug=False)
     service_thread = threading.Thread(target=service.run_loop)
     service_thread.start()
@@ -68,8 +73,8 @@ def test_training():
         return train_response
 
     try:
-        request_1 = dict(train_request, id='some id 1')
-        request_2 = dict(train_request, id='some id 2')
+        request_1 = dict(train_request, workspace_id='some id 1')
+        request_2 = dict(train_request, workspace_id='some id 2')
         producer.send(ATestService.input_topic, request_1)
         producer.send(ATestService.input_topic, request_1)
         producer.send(ATestService.input_topic, request_2)
@@ -77,21 +82,27 @@ def test_training():
         responses = get_responses(consumer)
         for r in responses:
             _test(r)
-        assert {r['id'] for r in responses} == {'some id 1', 'some id 2'}
+        assert ({r['workspace_id'] for r in responses} ==
+                {'some id 1', 'some id 2'})
         producer.send(ATestService.input_topic, request_1)
         producer.flush()
         producer.send(ATestService.input_topic, request_1)
         producer.send(ATestService.input_topic, {'junk': True})
         producer.send(ATestService.input_topic, request_2)
-        producer.send(ATestService.input_topic, {'id': '3', 'pages': [True]})
+        producer.send(ATestService.input_topic,
+                      {'workspace_id': '3', 'pages': [True]})
         producer.flush()
         responses = get_responses(consumer)
-        assert ({r['id'] for r in responses if r['id'] != '3'} ==
-                {'some id 1', 'some id 2'})
-        error_response = [r for r in responses if r['id'] == '3'][0]
+        assert ({r['workspace_id'] for r in responses
+                 if r['workspace_id'] != '3'} == {'some id 1', 'some id 2'})
+        error_response = [r for r in responses if r['workspace_id'] == '3'][0]
         assert 'Error' in error_response['quality']
         assert ("'bool' object has no attribute 'get'"
                 in error_response['quality'])
+        trainer_responses = get_responses(trainer_consumer, timeout_ms=10)
+        assert len(trainer_responses) == 4
+        assert all(r.get(k) for r in trainer_responses
+                   for k in ['workspace_id', 'page_model', 'urls'])
     finally:
         producer.send(ATestService.input_topic, {'from-tests': 'stop'})
         producer.flush()

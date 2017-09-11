@@ -20,6 +20,7 @@ from .utils import configure_logging, encode_object
 class Service:
     input_topic = 'dd-modeler-input'
     output_topic = 'dd-modeler-output'
+    trainer_topic = 'dd-trainer-input'
     progress_output_topic = 'dd-modeler-progress'
     max_message_size = 104857600
 
@@ -57,22 +58,22 @@ class Service:
                     if should_stop:
                         return
                     elif value is not None:
-                        to_submit[value['id']] = value
-                for id_, value in to_submit.items():
-                    if id_ in jobs:
-                        jobs[id_].cancel()
-                    jobs[id_] = pool.submit(self.train_model, value)
+                        to_submit[value['workspace_id']] = value
+                for ws_id, value in to_submit.items():
+                    if ws_id in jobs:
+                        jobs[ws_id].cancel()
+                    jobs[ws_id] = (value, pool.submit(self.train_model, value))
                 sent = []
-                for id_, future in jobs.items():
+                for ws_id, (request, future) in jobs.items():
                     try:
                         result = future.result(timeout=0)
                     except TimeoutError:
                         pass
                     else:
-                        self.send_result(result)
-                        sent.append(id_)
-                for id_ in sent:
-                    del jobs[id_]
+                        self.send_result(result, request)
+                        sent.append(ws_id)
+                for ws_id in sent:
+                    del jobs[ws_id]
 
     def extract_value(self, message: ConsumerRecord
                       ) -> Tuple[Optional[Dict], bool]:
@@ -87,29 +88,29 @@ class Service:
         if value == {'from-tests': 'stop'}:
             logging.info('Got message to stop (from tests)')
             return None, True
-        elif isinstance(value.get('pages'), list) and value.get('id'):
+        elif isinstance(value.get('pages'), list) and value.get('workspace_id'):
             logging.info(
-                'Got training task with {pages} pages, id "{id}", '
+                'Got training task with {pages} pages, workspace_id "{ws_id}", '
                 'message checksum {checksum}, offset {offset}.'
                 .format(
                     pages=len(value['pages']),
-                    id=value.get('id'),
+                    ws_id=value['workspace_id'],
                     checksum=message.checksum,
                     offset=message.offset,
                 ))
             return value, False
         else:
             logging.error(
-                'Dropping a message without "pages" or "id" key: {}'
+                'Dropping a message without "pages" or "workspace_id" key: {}'
                 .format(pformat(value)))
             return None, False
 
     def train_model(self, request: Dict) -> Dict:
-        id_ = request['id']
+        ws_id = request['workspace_id']
         try:
             result = train_model(
                 request['pages'], model_cls=self.model_cls,
-                progress_callback=partial(self.progress_callback, id_=id_),
+                progress_callback=partial(self.progress_callback, ws_id=ws_id),
                 **self.model_kwargs)
         except Exception as e:
             logging.error('Failed to train a model', exc_info=e)
@@ -119,30 +120,37 @@ class Service:
                     ERROR,
                     'Unknown error while training a model: {}'.format(e))]))
         return {
-            'id': id_,
+            'workspace_id': ws_id,
             'quality': json.dumps(attr.asdict(result.meta)),
             'model': (encode_object(result.model) if result.model is not None
                       else None),
         }
 
-    def progress_callback(self, progress: float, id_: str):
+    def progress_callback(self, progress: float, ws_id: str):
         logging.info('Sending progress update for {}: {:.0%}'
-                     .format(id_, progress))
+                     .format(ws_id, progress))
         self.producer.send(
             self.progress_output_topic, _encode_message({
-                'id': id_,
+                'workspace_id': ws_id,
                 'percentage_done': 100 * progress,
             })
         )
         self.producer.flush()
 
-    def send_result(self, result: Dict) -> None:
+    def send_result(self, result: Dict, request: Dict) -> None:
         message = _encode_message(result)
         self._debug_save_message(message, 'outgoing')
-        logging.info('Sending result for id "{}", model size {:,} bytes'
-                     .format(result.get('id'),
+        logging.info('Sending result for workspace "{}", model size {:,} bytes'
+                     .format(result['workspace_id'],
                              len(result.get('model') or '')))
         self.producer.send(self.output_topic, message)
+        if result.get('model'):
+            self.producer.send(self.trainer_topic, _encode_message({
+                'workspace_id': result['workspace_id'],
+                'urls': [page['url'] for page in request['pages']
+                         if page.get('relevant')],
+                'page_model': result['model'],
+            }))
         self.producer.flush()
 
     def _debug_save_message(self, message: bytes, kind: str) -> None:
