@@ -32,7 +32,6 @@ class Service:
             kafka_kwargs['bootstrap_servers'] = kafka_host
         self.consumer = KafkaConsumer(
             self.input_topic,
-            group_id='{}-group'.format(self.input_topic),
             max_partition_fetch_bytes=self.max_message_size,
             consumer_timeout_ms=100,
             **kafka_kwargs)
@@ -62,7 +61,6 @@ class Service:
                     if id_ in jobs:
                         jobs[id_].cancel()
                     jobs[id_] = pool.submit(self.train_model, value)
-                self.consumer.commit()
                 sent = []
                 for id_, future in jobs.items():
                     try:

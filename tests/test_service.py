@@ -24,16 +24,6 @@ class ATestService(Service):
     ouput_topic = 'test-{}'.format(Service.output_topic)
 
 
-def clear_topics():
-    for topic in [ATestService.input_topic, ATestService.output_topic]:
-        consumer = KafkaConsumer(
-            topic, group_id='{}-group'.format(topic),
-            consumer_timeout_ms=100)
-        for _ in consumer:
-            pass
-        consumer.commit()
-
-
 def encode_message(message: Dict) -> bytes:
     try:
         return json.dumps(message).encode('utf8')
@@ -47,7 +37,6 @@ def compress_html(html: str) -> str:
 
 
 def test_training():
-    clear_topics()
     producer = KafkaProducer(value_serializer=encode_message)
     consumer = KafkaConsumer(
         ATestService.output_topic,
