@@ -15,6 +15,7 @@ setup(
         'langdetect',
         'numpy',
         'pandas',
+        'requests',
         'scikit-learn>=0.18<0.19',
         'scipy==0.18.1',
         'stop-words',

@@ -1,12 +1,14 @@
 import argparse
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError
+from functools import lru_cache
 import gzip
 import hashlib
 from functools import partial
 import logging
 import json
 from pprint import pformat
+import requests
 from typing import Dict, Optional, List, Tuple
 
 import attr
@@ -123,13 +125,12 @@ class Service:
         }
 
     def _fetch_pages_html(self, pages: List[Dict]):
-        for page in pages:
-            html_location = page.pop('html_location')
-            if html_location.startswith('html://'):  # used in tests
-                html = html_location[len('html://'):]
-            else:
-                html = None  # TODO
-            page['html'] = html
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for html, page in zip(
+                    pool.map(_fetch_html,
+                             [p.pop('html_location') for p in pages]),
+                    pages):
+                page['html'] = html
 
     def progress_callback(self, progress: float, ws_id: str):
         logging.info('Sending progress update for {}: {:.0%}'
@@ -169,6 +170,15 @@ class Service:
 
 def _encode_message(value: Dict) -> bytes:
     return json.dumps(value).encode('utf8')
+
+
+@lru_cache(maxsize=1000)
+def _fetch_html(html_location: str) -> str:
+    if html_location.startswith('html://'):  # used in tests
+        return html_location[len('html://'):]
+    else:
+        data = requests.get(html_location).json()
+        return data['_source']['result']['crawlResultDto']['html']
 
 
 def main():
