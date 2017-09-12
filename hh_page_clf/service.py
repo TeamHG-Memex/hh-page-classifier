@@ -90,14 +90,8 @@ class Service:
             return None, True
         elif isinstance(value.get('pages'), list) and value.get('workspace_id'):
             logging.info(
-                'Got training task with {pages} pages, workspace_id "{ws_id}", '
-                'message checksum {checksum}, offset {offset}.'
-                .format(
-                    pages=len(value['pages']),
-                    ws_id=value['workspace_id'],
-                    checksum=message.checksum,
-                    offset=message.offset,
-                ))
+                'Got training task with {pages} pages, workspace_id "{ws_id}"'
+                .format(pages=len(value['pages']), ws_id=value['workspace_id']))
             return value, False
         else:
             logging.error(
