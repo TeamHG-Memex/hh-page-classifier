@@ -1,6 +1,4 @@
-import base64
 from collections import namedtuple
-import gzip
 import json
 import logging
 from pprint import pprint
@@ -34,10 +32,6 @@ def encode_message(message: Dict) -> bytes:
         raise
 
 
-def compress_html(html: str) -> str:
-    return base64.b64encode(gzip.compress(html.encode('utf8'))).decode('ascii')
-
-
 def test_training():
     producer = KafkaProducer(value_serializer=encode_message)
     consumer = KafkaConsumer(ATestService.output_topic,
@@ -55,7 +49,7 @@ def test_training():
             } for n in range(10)]
     train_request = {
         'pages': [{'url': page['url'],
-                   'html': compress_html(page['html']),
+                   'html_location': 'html://{}'.format(page['html']),
                    'relevant': page['relevant']}
                   for page in pages],
     }
@@ -97,8 +91,7 @@ def test_training():
                  if r['workspace_id'] != '3'} == {'some id 1', 'some id 2'})
         error_response = [r for r in responses if r['workspace_id'] == '3'][0]
         assert 'Error' in error_response['quality']
-        assert ("'bool' object has no attribute 'get'"
-                in error_response['quality'])
+        assert "'bool' object" in error_response['quality']
         trainer_responses = get_responses(trainer_consumer, timeout_ms=10)
         assert len(trainer_responses) == 4
         assert all(r.get(k) for r in trainer_responses

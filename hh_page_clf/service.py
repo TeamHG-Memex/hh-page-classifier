@@ -7,7 +7,7 @@ from functools import partial
 import logging
 import json
 from pprint import pformat
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, List, Tuple
 
 import attr
 from kafka import KafkaConsumer, KafkaProducer
@@ -102,8 +102,10 @@ class Service:
     def train_model(self, request: Dict) -> Dict:
         ws_id = request['workspace_id']
         try:
+            pages = request['pages']
+            self._fetch_pages_html(pages)
             result = train_model(
-                request['pages'], model_cls=self.model_cls,
+                pages, model_cls=self.model_cls,
                 progress_callback=partial(self.progress_callback, ws_id=ws_id),
                 **self.model_kwargs)
         except Exception as e:
@@ -119,6 +121,15 @@ class Service:
             'model': (encode_object(result.model) if result.model is not None
                       else None),
         }
+
+    def _fetch_pages_html(self, pages: List[Dict]):
+        for page in pages:
+            html_location = page.pop('html_location')
+            if html_location.startswith('html://'):  # used in tests
+                html = html_location[len('html://'):]
+            else:
+                html = None  # TODO
+            page['html'] = html
 
     def progress_callback(self, progress: float, ws_id: str):
         logging.info('Sending progress update for {}: {:.0%}'
