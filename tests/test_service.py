@@ -22,6 +22,7 @@ class ATestService(Service):
     ouput_topic = 'test-{}'.format(Service.output_topic)
     trainer_topic = 'test-{}'.format(Service.trainer_topic)
     progress_output_topic = 'test-{}'.format(Service.progress_output_topic)
+    group_id = None  # this massively simplifies testing
 
 
 def encode_message(message: Dict) -> bytes:

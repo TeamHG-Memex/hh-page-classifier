@@ -24,6 +24,7 @@ class Service:
     output_topic = 'dd-modeler-output'
     trainer_topic = 'dd-trainer-input'
     progress_output_topic = 'dd-modeler-progress'
+    group_id = 'hh-page-classifier'
     max_message_size = 104857600
 
     def __init__(self, kafka_host=None, model_cls=None, model_kwargs=None,
@@ -35,6 +36,7 @@ class Service:
             kafka_kwargs['bootstrap_servers'] = kafka_host
         self.consumer = KafkaConsumer(
             self.input_topic,
+            group_id=self.group_id,
             max_partition_fetch_bytes=self.max_message_size,
             consumer_timeout_ms=100,
             **kafka_kwargs)
