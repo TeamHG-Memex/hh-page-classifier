@@ -65,7 +65,8 @@ class Service:
                         to_submit[value['workspace_id']] = value
                 for ws_id, value in to_submit.items():
                     if ws_id in jobs:
-                        jobs[ws_id].cancel()
+                        _, future = jobs[ws_id]
+                        future.cancel()
                     jobs[ws_id] = (value, pool.submit(self.train_model, value))
                 sent = []
                 for ws_id, (request, future) in jobs.items():
