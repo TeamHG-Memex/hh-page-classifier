@@ -52,7 +52,10 @@ def test_training():
         'pages': [{'url': page['url'],
                    'html_location': 'html://{}'.format(page['html']),
                    'relevant': page['relevant']}
-                  for page in pages],
+                  for page in pages] +
+                 [{'url': 'http://example.com',
+                   'html_location': 'bad',
+                   'relevant': True}]
     }
 
     def _test(train_response):

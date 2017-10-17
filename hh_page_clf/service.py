@@ -108,7 +108,7 @@ class Service:
         ws_id = request['workspace_id']
         try:
             pages = request['pages']
-            self._fetch_pages_html(pages)
+            pages = self._fetch_pages_html(pages)
             result = train_model(
                 pages, model_cls=self.model_cls,
                 progress_callback=partial(self.progress_callback, ws_id=ws_id),
@@ -127,13 +127,17 @@ class Service:
                       else None),
         }
 
-    def _fetch_pages_html(self, pages: List[Dict]):
+    def _fetch_pages_html(self, pages: List[Dict]) -> List[Dict]:
+        fetched = []
         with ThreadPoolExecutor(max_workers=4) as pool:
             for html, page in zip(
                     pool.map(_fetch_html,
                              [p.pop('html_location') for p in pages]),
                     pages):
-                page['html'] = html
+                if html is not None:
+                    page['html'] = html
+                    fetched.append(page)
+        return fetched
 
     def progress_callback(self, progress: float, ws_id: str):
         logging.info('Sending progress update for {}: {:.0%}'
@@ -180,8 +184,12 @@ def _fetch_html(html_location: str) -> str:
     if html_location.startswith('html://'):  # used in tests
         return html_location[len('html://'):]
     else:
-        data = requests.get(html_location).json()
-        return data['_source']['result']['crawlResultDto']['html']
+        try:
+            data = requests.get(html_location).json()
+            return data['_source']['result']['crawlResultDto']['html']
+        except Exception as e:
+            logging.warning('Error fetching html for "{}": {}'
+                            .format(html_location, e))
 
 
 def main():

@@ -197,7 +197,7 @@ def extract_features(doc):
         try:
             html = gzip.decompress(base64.b64decode(html)).decode('utf8')
         except Exception:
-            pass  # support not compressed html too for a while - TODO - remove
+            pass  # support not compressed html too
     text = html_text.extract_text(html)
     try:
         lang = langdetect.detect(text)
