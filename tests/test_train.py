@@ -165,7 +165,7 @@ def test_single_domain():
          'text': '50% relevant, 50% not relevant.'},
         {'heading': 'Metrics', 'text': ''},
     ]
-    assert result.model is not None
+    assert result.model is None
 
 
 def test_two_domains():
@@ -201,7 +201,7 @@ def test_default_clf(model_cls):
     docs = [{'html': 'foo{} bar'.format(i % 4),
              'url': 'http://example{}.com'.format(i),
              'relevant': i % 2 == 0}
-            for i in range(10)]
+            for i in range(100)]
     result = default_train_model(docs, model_cls=model_cls)
     assert result.model is not None
     meta = attr.asdict(result.meta)

@@ -47,7 +47,7 @@ def test_training():
     pages = [{'url': 'http://example-{}.com/foo'.format(n),
               'html': '<h1>hi example-{} number{}</h1>'.format(n, n % 3),
               'relevant': n % 3 == 1,
-            } for n in range(10)]
+            } for n in range(100)]
     train_request = {
         'pages': [{'url': page['url'],
                    'html_location': 'html://{}'.format(page['html']),

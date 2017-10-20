@@ -97,7 +97,8 @@ def train_model(docs: List[Dict],
                      .format(len(docs)))
 
     all_xs = [doc for doc in docs if doc.get('relevant') in [True, False]]
-    logging.info('Got {:,} labeled pages'.format(len(all_xs)))
+    n_labeled = len(all_xs)
+    logging.info('Got {:,} labeled pages'.format(n_labeled))
     if not all_xs:
         return no_labeled_error()
     n_relevant = sum(doc['relevant'] for doc in all_xs)
@@ -111,7 +112,7 @@ def train_model(docs: List[Dict],
             random_pages, n_extra_non_relevant)
         all_xs.extend(extra_non_relevant)
         docs.extend(extra_non_relevant)  # for proper report in get_meta
-    elif n_relevant == len(all_xs):
+    elif n_relevant == n_labeled:
         return single_class_error(True)
     random.shuffle(all_xs)
     all_ys = np.array([doc['relevant'] for doc in all_xs])
@@ -140,6 +141,16 @@ def train_model(docs: List[Dict],
     meta = get_meta(model, metrics, advice, docs, skip_eli5=skip_eli5)
     logging.info('Model meta:\n{}'.format(meta_repr(meta)))
     pbar.progress(0.05)
+
+    roc_auc = get_roc_auc_from_metrics(metrics)
+    if roc_auc is None or np.isnan(roc_auc):
+        roc_auc = 0
+    if n_labeled < MIN_N_LABELED and roc_auc < WARN_ROC_AUC:
+        model = None
+        meta.advice.append(AdviceItem(
+            WARNING,
+            'Not starting trainer crawl yet: need at least {} labeled documents'
+            ' or ROC AUC >= {}'.format(MIN_N_LABELED, WARN_ROC_AUC)))
 
     return ModelMeta(model=model, meta=meta, metrics=metrics)
 
@@ -338,7 +349,7 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
     pbar.progress(0.15)
     metrics = {
         'Accuracy': {'all': accuracy_score(test_ys, pred_ys)},
-        'ROC AUC': {'all': get_roc_auc(test_ys, pred_ys_prob)},
+        ROC_KEY: {'all': get_roc_auc(test_ys, pred_ys_prob)},
     }
 
     human_idx = [idx for idx, doc in enumerate(test_xs)
@@ -346,7 +357,7 @@ def eval_on_fold(fold, model_cls: BaseModel, model_kwargs: Dict,
     if human_idx and len(human_idx) != len(test_idx):
         metrics['Accuracy']['human'] = \
             accuracy_score(test_ys[human_idx], pred_ys[human_idx])
-        metrics['ROC AUC']['human'] = \
+        metrics[ROC_KEY]['human'] = \
             get_roc_auc(test_ys[human_idx], pred_ys_prob[human_idx])
     pbar.progress(0.05)
 
@@ -370,8 +381,10 @@ def get_domain(url: str) -> str:
     return tldextract.extract(url).registered_domain.lower()
 
 
+ROC_KEY = 'ROC AUC'
 WARN_N_RELEVANT_DOMAINS = 10
 WARN_N_LABELED = 100
+MIN_N_LABELED = 50
 WARN_RELEVANT_RATIO_HIGH = 0.75
 WARN_RELEVANT_RATIO_LOW = 0.05
 GOOD_ROC_AUC = 0.95
@@ -467,12 +480,15 @@ def get_meta(
     )
 
 
-def add_quality_advice(advice, metrics):
-    roc_key = 'ROC AUC'
-    roc_aucs = metrics.get(roc_key)
+def get_roc_auc_from_metrics(metrics):
+    roc_aucs = metrics.get(ROC_KEY)
     if not roc_aucs:
         return
-    roc_auc = np.mean([m.get('human', m['all']) for m in roc_aucs])
+    return np.mean([m.get('human', m['all']) for m in roc_aucs])
+
+
+def add_quality_advice(advice, metrics):
+    roc_auc = get_roc_auc_from_metrics(metrics)
     fix_advice = (
         'fixing warnings shown above' if advice else
         'labeling more pages, or re-labeling them using '
@@ -492,7 +508,7 @@ def add_quality_advice(advice, metrics):
             .format(
                 quality=('very bad' if roc_auc < DANGER_ROC_AUC else
                          'not very good'),
-                roc_key=roc_key,
+                roc_key=ROC_KEY,
                 roc_auc=roc_auc,
                 advice=fix_advice,
         )))
@@ -504,7 +520,7 @@ def add_quality_advice(advice, metrics):
             .format(
                 quality=('very good' if roc_auc > GOOD_ROC_AUC else
                          'not bad'),
-                roc_key=roc_key,
+                roc_key=ROC_KEY,
                 roc_auc=roc_auc,
                 advice=('Still, consider fixing warnings shown above'
                         if advice else
@@ -598,7 +614,7 @@ def get_eli5_weights(model: BaseModel, docs: List):
 
 
 TOOLTIPS = {
-    'ROC AUC': (
+    ROC_KEY: (
         'Area under ROC (receiver operating characteristic) curve '
         'shows how good is the classifier at telling relevant pages from '
         'non-relevant at different thresholds. '
@@ -725,7 +741,7 @@ def main():
             print(meta_repr(result.meta))
 
         print()
-        metric = 'ROC AUC'
+        metric = ROC_KEY
         for kind in ['all', 'human']:
             logging.info('gmean {metric} of "{kind}" runs: {gmean:.3f}'.format(
                 metric=metric,
