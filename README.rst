@@ -1,7 +1,8 @@
 Headless Horseman Page Classifier
 =================================
 
-It gets pages and their labels from The Headless Horseman (THH)
+It gets pages and their labels from Sitehound
+(previously The Headless Horseman, or THH)
 via a kafka queue, trains a model, and sends back both model
 and some quality report. The user of THH then might label more pages,
 allowing the classifier to reach higher accuracy.
@@ -100,8 +101,8 @@ if running on a different network)::
 LDA model trained on 500k dmoz pages with bigrams and 100k features,
 and random pages (1k alexa top-1m sample) are available at
 ``s3://darpa-memex/thh/``:
-`random-pages.jl.gz <https://s3-us-west-2.amazonaws.com/darpa-memex/thh/random-pages.jl.gz>`_
-and `lda.pkl <https://s3-us-west-2.amazonaws.com/darpa-memex/thh/lda.pkl>`_.
+`random-pages.jl.gz <https://darpa-memex.s3.amazonaws.com/thh/random-pages.jl.gz>`_
+and `lda.pkl <https://darpa-memex.s3.amazonaws.com/thh/lda.pkl>`_.
 
 Pass path to random pages via ``--random-pages`` argument, and path to LDA
 model via ``--lda`` argument. Note that LDA model is optional and is disabled
