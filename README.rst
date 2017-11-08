@@ -100,7 +100,7 @@ if running on a different network)::
 
 LDA model trained on 500k dmoz pages with bigrams and 100k features,
 and random pages (1k alexa top-1m sample) are available at
-``s3://darpa-memex/thh/``: ``random-pages.jl.gz>`` and ``lda.pkl``.
+``s3://darpa-memex/thh/``: ``random-pages.jl.gz`` and ``lda.pkl``.
 
 Pass path to random pages via ``--random-pages`` argument, and path to LDA
 model via ``--lda`` argument. Note that LDA model is optional and is disabled
