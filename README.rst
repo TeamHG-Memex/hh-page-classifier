@@ -169,5 +169,5 @@ Cleaning Kafka queues at the start of tests/test_service.py can
 ----
 
 .. image:: https://hyperiongray.s3.amazonaws.com/define-hg.svg
-	:target: https://hyperiongray.com/?pk_campaign=github&pk_kwd=hh-page-classifier
+	:target: https://www.hyperiongray.com/?pk_campaign=github&pk_kwd=hh-page-classifier
 	:alt: define hyperiongray
