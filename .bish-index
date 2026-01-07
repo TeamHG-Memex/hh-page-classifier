@@ -1,0 +1,12 @@
+./scripts/kafka-push.py
+./hh_page_clf/service.py
+./hh_page_clf/train.py
+./hh_page_clf/utils.py
+./hh_page_clf/__init__.py
+./hh_page_clf/format_meta.py
+./hh_page_clf/models.py
+./setup.py
+./AGENTS.md
+./tests/test_train.py
+./tests/test_service.py
+./tests/__init__.py
